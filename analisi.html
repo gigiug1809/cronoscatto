@@ -1,0 +1,1581 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0a1118">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Cronoscatto Analisi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+/* Layout: telefono = una colonna (mappa, foto, grafico, pannelli); schermo largo = mappa fissa a sinistra, foto e grafici a destra.
+   Tema unico scuro, come la fotocamera. */
+:root{
+  --bg:#0a1118;
+  --surface:#121c26;
+  --surface-2:#1a2733;
+  --line:#26384a;
+  --grid:#1d2a37;
+  --fg:#eaf0f4;
+  --muted:#8b9cad;
+  --accent:#ffb000;
+  --accent-ink:#1a1200;
+  --s1:#3987e5;
+  --s2:#d95926;
+  --s3:#199e70;
+  --bad:#ff6b5e;
+  --ok:#47cf86;
+  --scrim:rgba(0,0,0,.55);
+  --font-display:"Barlow Condensed","Arial Narrow","Roboto Condensed",sans-serif;
+  --font-body:"Barlow",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--bg);color:var(--fg)}
+body{font:15px/1.45 var(--font-body);-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;
+  padding:0 calc(env(safe-area-inset-right,0px) + 16px) calc(env(safe-area-inset-bottom,0px) + 28px) calc(env(safe-area-inset-left,0px) + 16px)}
+button,select,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+h1,h2{font-family:var(--font-display);letter-spacing:.03em;margin:0;text-wrap:balance}
+.num{font-variant-numeric:tabular-nums}
+
+.top{position:sticky;top:0;z-index:1000;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;
+  margin:0 calc(-16px - env(safe-area-inset-right,0px)) 0 calc(-16px - env(safe-area-inset-left,0px));
+  padding:calc(env(safe-area-inset-top,0px) + 10px) calc(env(safe-area-inset-right,0px) + 16px) 10px calc(env(safe-area-inset-left,0px) + 16px);
+  background:var(--bg);border-bottom:1px solid var(--line)}
+.back{color:var(--accent);text-decoration:none;font-weight:600;font-size:14px;white-space:nowrap}
+.top h1{font-size:28px;line-height:1;flex:1 1 auto}
+.top .src{display:flex;gap:8px;align-items:center;flex:1 1 320px;min-width:0}
+.top .src select{flex:1 1 auto;min-width:0}
+
+.btn{appearance:none;border:1px solid var(--line);background:var(--surface-2);color:var(--fg);font:600 14px/1.1 var(--font-body);
+  padding:10px 13px;border-radius:11px;min-height:42px;cursor:pointer;text-align:center;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.icon{width:44px;padding:0;font-size:18px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+select,input[type=number],input[type=text]{appearance:none;min-height:42px;padding:9px 12px;border-radius:11px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:500 15px/1.2 var(--font-body)}
+select{padding-right:36px;background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%238b9cad' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 12px center}
+input[type=number]{width:88px;font-variant-numeric:tabular-nums}
+label.f{display:grid;gap:6px;font:600 12px/1.2 var(--font-body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);min-width:0}
+label.f select,label.f input{letter-spacing:0;text-transform:none;color:var(--fg);width:100%}
+.hint{font-size:13px;color:var(--muted);margin:0;max-width:68ch}
+
+.banner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 14px;margin-top:12px;padding:10px 14px;border-radius:12px;background:var(--surface-2);border:1px dashed var(--accent)}
+.banner p{margin:0;font-weight:500}
+
+main{display:grid;gap:14px;margin-top:14px;grid-template-columns:minmax(0,1fr);
+  grid-template-areas:"map" "viewer" "chart" "cyc" "exp"}
+@media (min-width:980px){
+  main{grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);grid-template-areas:"map viewer" "map chart" "cyc exp";align-items:start}
+  main .mapcard{position:sticky;top:76px;height:calc(100vh - 92px)}
+  main .mapcard #map{height:100%}
+}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px;min-width:0}
+.card-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.card-head h2{font-size:22px;line-height:1.1}
+
+.mapcard{grid-area:map;position:relative;padding:0;overflow:hidden}
+#map{height:min(46vh,440px);min-height:260px;background:#163246}
+.map-off{position:absolute;inset:0;display:grid;place-items:center;padding:20px;text-align:center;color:var(--muted);background:var(--surface)}
+.legend{position:absolute;left:10px;bottom:10px;z-index:500;background:rgba(10,17,24,.88);border:1px solid var(--line);border-radius:12px;padding:8px 10px;display:grid;gap:6px;max-width:calc(100% - 20px)}
+.legend select{min-height:34px;padding:5px 32px 5px 10px;font-size:14px;background-color:var(--bg)}
+.ramp{height:8px;border-radius:4px;width:180px;max-width:100%}
+.ramp-l{display:flex;justify-content:space-between;font:600 12px/1 var(--font-body);color:var(--fg);font-variant-numeric:tabular-nums}
+.leaflet-container{font:13px/1.3 var(--font-body)}
+.leaflet-control-layers,.leaflet-bar a{background:var(--surface)!important;color:var(--fg)!important;border-color:var(--line)!important}
+.leaflet-control-layers{border:1px solid var(--line)!important;border-radius:10px!important}
+.leaflet-control-layers-toggle{filter:invert(1) hue-rotate(180deg)}
+.leaflet-control-attribution{background:rgba(10,17,24,.75)!important;color:var(--muted)!important}
+.leaflet-control-attribution a{color:var(--fg)!important}
+.leaflet-control-scale-line{background:rgba(10,17,24,.75);color:var(--fg);border-color:var(--fg)}
+.leaflet-tooltip{background:var(--surface);color:var(--fg);border:1px solid var(--line)}
+.leaflet-tooltip-top:before{border-top-color:var(--line)}
+
+.viewer{grid-area:viewer;display:grid;gap:12px}
+.photo{position:relative;margin:0;border-radius:12px;overflow:hidden;background:#000;aspect-ratio:16/9;max-width:100%}
+.photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block}
+.photo .ph{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:13px}
+.readouts{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:8px}
+.ro{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:8px 10px;min-width:0}
+.ro .k{display:flex;align-items:center;gap:6px;font:600 11px/1.2 var(--font-body);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ro .v{font:700 26px/1.05 var(--font-display);font-variant-numeric:tabular-nums;margin-top:3px;white-space:nowrap}
+.ro .v small{font-size:.55em;font-weight:600;color:var(--muted);margin-left:3px}
+.sw{width:10px;height:3px;border-radius:2px;flex:none}
+.transport{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.transport input[type=range]{flex:1 1 160px;min-width:0;accent-color:var(--accent);height:32px}
+.transport .pos{font:600 13px/1 var(--font-body);color:var(--muted);font-variant-numeric:tabular-nums;min-width:86px;text-align:right}
+.transport select{min-height:42px;padding:6px 30px 6px 10px}
+
+.chartcard{grid-area:chart}
+.chart-legend{display:flex;flex-wrap:wrap;gap:6px 14px;font:500 13px/1.2 var(--font-body);color:var(--fg);margin-bottom:6px}
+.chart-legend span{display:inline-flex;align-items:center;gap:6px}
+.chart-legend .sw{width:14px}
+.chartbox{position:relative}
+#chart{display:block;width:100%;height:280px;touch-action:pan-y;cursor:crosshair}
+.tip{position:absolute;top:0;pointer-events:none;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:6px 9px;font:500 12px/1.35 var(--font-body);font-variant-numeric:tabular-nums;white-space:nowrap;box-shadow:0 6px 18px rgba(0,0,0,.35);z-index:2}
+.tip b{font-weight:600}
+
+.cyc{grid-area:cyc}
+.exp{grid-area:exp}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:12px}
+.checks{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 0;padding:0;border:0}
+.checks legend{font:600 12px/1.2 var(--font-body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;padding:0}
+.chk{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;border:1px solid var(--line);background:var(--bg);cursor:pointer;font-weight:500;font-size:14px}
+.chk input{accent-color:var(--accent);width:18px;height:18px;margin:0}
+.offset{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:14px}
+.offset .lbl{font:600 12px/1.2 var(--font-body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);flex-basis:100%}
+.stat{margin:12px 0 0;font-weight:500;font-variant-numeric:tabular-nums}
+.stat.warn{color:var(--accent)}
+.stat.bad{color:var(--bad)}
+details{margin-top:12px}
+summary{cursor:pointer;color:var(--muted);font-size:13px}
+pre{margin:8px 0 0;padding:10px;border-radius:10px;background:var(--bg);border:1px solid var(--line);overflow-x:auto;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--fg);max-height:220px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.row + .row{margin-top:10px}
+.range{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+progress{width:100%;height:10px;accent-color:var(--accent)}
+.prog{display:grid;gap:8px;margin-top:12px}
+
+.empty{max-width:560px;margin:56px auto 0;text-align:center;display:grid;gap:14px;justify-items:center}
+.empty h2{font-size:34px}
+.empty p{color:var(--muted);margin:0}
+.toast{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 20px);margin-inline:auto;max-width:460px;z-index:3000;
+  background:var(--surface-2);border:1px solid var(--line);color:var(--fg);padding:12px 14px;border-radius:12px;font:500 14px/1.35 var(--font-body);box-shadow:0 10px 30px rgba(0,0,0,.45)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="back" href="./">‹ Fotocamera</a>
+  <h1>Analisi</h1>
+  <div class="src">
+    <select id="sessionSel" aria-label="Sessione da analizzare"></select>
+    <button class="btn" id="zipBtn" type="button">Apri ZIP</button>
+    <input type="file" id="zipInput" accept=".zip,application/zip" hidden>
+  </div>
+</header>
+
+<div class="banner" id="demoBanner" hidden>
+  <p>Stai guardando dati di esempio generati dall'app, non tue misure.</p>
+  <button class="btn" type="button" id="demoClose">Chiudi l'esempio</button>
+</div>
+
+<section class="empty" id="empty" hidden>
+  <h2>Nessuna sessione qui</h2>
+  <p>Su questo dispositivo non ci sono foto di Cronoscatto. Registra una sequenza con la fotocamera, oppure apri lo ZIP di una sessione esportata (per esempio dal computer).</p>
+  <div class="row" style="justify-content:center">
+    <button class="btn primary" type="button" id="emptyZip">Apri uno ZIP di Cronoscatto</button>
+    <button class="btn" type="button" id="emptyDemo">Prova con dati di esempio</button>
+  </div>
+</section>
+
+<main id="main" hidden>
+  <section class="card mapcard">
+    <div id="map" role="region" aria-label="Mappa della traccia"></div>
+    <div class="map-off" id="mapOff" hidden>La mappa non è disponibile: serve la connessione per scaricarla. Foto, grafici ed esportazioni funzionano lo stesso.</div>
+    <div class="legend" id="legend">
+      <select id="metric" aria-label="Colore della traccia"></select>
+      <div class="ramp" id="ramp"></div>
+      <div class="ramp-l"><span id="rampMin">—</span><span id="rampMax">—</span></div>
+    </div>
+  </section>
+
+  <section class="viewer">
+    <figure class="photo" id="photoBox">
+      <img id="photo" alt="Foto selezionata">
+      <div class="ph" id="photoPh">Caricamento della foto…</div>
+    </figure>
+    <div class="readouts" id="readouts"></div>
+    <div class="transport">
+      <button class="btn icon" type="button" id="prev" aria-label="Foto precedente">‹</button>
+      <button class="btn icon" type="button" id="play" aria-label="Riproduci">▶</button>
+      <button class="btn icon" type="button" id="next" aria-label="Foto successiva">›</button>
+      <select id="speedSel" aria-label="Velocità di riproduzione"><option value="1">1×</option><option value="2">2×</option><option value="5" selected>5×</option><option value="10">10×</option></select>
+      <input type="range" id="scrub" min="0" max="0" value="0" aria-label="Scorri le foto">
+      <span class="pos" id="pos">0 / 0</span>
+    </div>
+  </section>
+
+  <section class="card chartcard">
+    <div class="card-head"><h2>Velocità e carico</h2></div>
+    <div class="chart-legend" id="chartLegend"></div>
+    <div class="chartbox">
+      <canvas id="chart" aria-label="Grafico di velocità e carico nel tempo"></canvas>
+      <div class="tip" id="tip" hidden></div>
+    </div>
+    <p class="hint" style="margin-top:6px">Tocca o trascina sul grafico per scegliere la foto.</p>
+  </section>
+
+  <section class="card cyc">
+    <div class="card-head">
+      <h2>Carico Cyclops</h2>
+      <div class="row">
+        <button class="btn" type="button" id="cycRemove" hidden>Rimuovi</button>
+        <button class="btn primary" type="button" id="cycBtn">Importa CSV</button>
+      </div>
+      <input type="file" id="cycInput" accept=".csv,.txt,text/csv,text/plain" hidden>
+    </div>
+    <p class="hint" id="cycEmpty">In Smart Fittings Manager apri il log registrato, condividilo e salvalo in File. Poi importalo qui: il carico viene abbinato a ogni foto in base all'orario. Se il log è stato registrato su questo telefono gli orologi coincidono.</p>
+    <div id="cycBody" hidden>
+      <p class="stat" id="cycInfo"></p>
+      <div class="fields">
+        <label class="f">Colonna ora<select id="mTime"></select></label>
+        <label class="f">Orari nel file<select id="mTz"><option value="local">Ora locale</option><option value="utc">UTC</option></select></label>
+        <label class="f">Colonna sensore<select id="mSensor"></select></label>
+        <label class="f">Unità<input type="text" id="mUnit" placeholder="kg" autocomplete="off"></label>
+      </div>
+      <fieldset class="checks" id="mValues"><legend>Colonne di carico (max 3 su grafico e foto)</legend></fieldset>
+      <div class="offset">
+        <span class="lbl">Allineamento del carico</span>
+        <button class="btn" type="button" data-off="-10">−10 s</button>
+        <button class="btn" type="button" data-off="-1">−1 s</button>
+        <input type="number" id="offset" step="0.1" value="0" aria-label="Scostamento in secondi">
+        <button class="btn" type="button" data-off="1">+1 s</button>
+        <button class="btn" type="button" data-off="10">+10 s</button>
+        <button class="btn primary" type="button" id="gpsAlign" hidden>Allinea con il GPS</button>
+      </div>
+      <p class="hint" style="margin-top:8px">Il log Cyclops registra anche la posizione: all'importazione l'app sovrappone le due tracce e corregge da sola la differenza fra gli orologi. Puoi rifinire a mano spostando la curva del carico finché i cali nelle virate coincidono con i cali di velocità.</p>
+      <p class="stat" id="cycCov"></p>
+      <details><summary>Prime righe del file</summary><pre id="cycPreview"></pre></details>
+    </div>
+  </section>
+
+  <section class="card exp">
+    <div class="card-head"><h2>Esporta</h2></div>
+    <div class="row">
+      <button class="btn" type="button" id="xCsv">CSV unito</button>
+      <button class="btn" type="button" id="xOne">Questa foto con carico</button>
+    </div>
+    <p class="hint" style="margin-top:8px">Il CSV unito ha una riga per foto con ora, posizione, velocità e carico. Le foto esportate hanno il carico stampato nella fascia dati e la posizione GPS nell'EXIF.</p>
+    <div class="range">
+      <label class="f">Dalla foto<input type="number" id="xFrom" min="1" value="1"></label>
+      <label class="f">Alla foto<input type="number" id="xTo" min="1" value="1"></label>
+      <label class="f">Quali<select id="xStep"><option value="1">Tutte</option><option value="2">1 ogni 2</option><option value="5">1 ogni 5</option><option value="10">1 ogni 10</option></select></label>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn" type="button" id="xSetFrom">Inizia da questa foto</button>
+      <button class="btn" type="button" id="xSetTo">Finisci a questa foto</button>
+    </div>
+    <p class="hint" id="xEst" style="margin-top:10px"></p>
+    <div class="row" style="margin-top:10px"><button class="btn primary" type="button" id="xZip">Crea ZIP delle foto con carico</button></div>
+    <div class="prog" id="xProg" hidden>
+      <progress id="xBar" max="1" value="0"></progress>
+      <div class="row"><span class="hint num" id="xMsg"></span><button class="btn" type="button" id="xCancel">Annulla</button></div>
+    </div>
+    <div class="row" id="xDone" style="margin-top:10px"></div>
+  </section>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+
+/* ---------- Costanti e formati ---------- */
+const FONT = '"Barlow Condensed","Arial Narrow","Roboto Condensed",sans-serif';
+const STAMP = { accent: '#ffb000', ink: '#ffffff', soft: 'rgba(234,240,244,0.84)', band: 'rgba(6,11,16,0.66)', load: '#8cc4ff' };
+const SERIES = ['#3987e5', '#d95926', '#199e70'];
+const RAMP = ['#ffe9a8', '#ffd166', '#ffb000', '#fb8c1c', '#ef6a24', '#d9462b', '#b02a2f'];
+const UNITS = { kn: { label: 'kn', f: 1.9438445, dec: 1 }, kmh: { label: 'km/h', f: 3.6, dec: 1 }, ms: { label: 'm/s', f: 1, dec: 2 } };
+const SRC_BACK = { gps: 'gps', calcolata: 'calc', in_calcolo: 'nospeed', fix_vecchio: 'stale', nessun_fix: 'wait', gps_negato: 'denied', gps_assente: 'unsupported' };
+const p2 = n => String(n).padStart(2, '0');
+const p4 = n => String(n).padStart(4, '0');
+const hms = d => `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+const hm = d => `${p2(d.getHours())}:${p2(d.getMinutes())}`;
+const dmy = d => `${p2(d.getDate())}/${p2(d.getMonth() + 1)}/${d.getFullYear()}`;
+const ymdhms = t => { const d = new Date(t); return `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}_${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`; };
+function isoLocal(t) {
+  const d = new Date(t), off = -d.getTimezoneOffset(), a = Math.abs(off);
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${hms(d)}.${String(d.getMilliseconds()).padStart(3, '0')}${off >= 0 ? '+' : '-'}${p2(Math.floor(a / 60))}:${p2(a % 60)}`;
+}
+const fmtNum = (v, dec) => v.toFixed(dec).replace('.', ',');
+function fmtBytes(b) {
+  if (b < 1e6) return `${Math.max(1, Math.round(b / 1e3))} kB`;
+  if (b < 1e9) return `${fmtNum(b / 1e6, b < 1e7 ? 1 : 0)} MB`;
+  return `${fmtNum(b / 1e9, 2)} GB`;
+}
+const loadDec = v => { const a = Math.abs(v); return a >= 100 ? 0 : a >= 10 ? 1 : 2; };
+// dec: cifre decimali del sensore (0 se il log registra valori interi, come Cyclops in kg)
+function fmtLoad(v, dec) { if (!isFinite(v)) return '—'; const d = dec == null ? loadDec(v) : dec; return new Intl.NumberFormat('it-IT', { maximumFractionDigits: d, minimumFractionDigits: d }).format(v); }
+const fmtAxis = (v, step) => new Intl.NumberFormat('it-IT', { maximumFractionDigits: step >= 1 ? 0 : step >= 0.1 ? 1 : 2 }).format(v);
+function readSettings() { try { return JSON.parse(localStorage.getItem('cronoscatto.settings') || '{}'); } catch (e) { return {}; } }
+const SPEED = UNITS[readSettings().unit] || UNITS.kn;
+const fmtSpeed = ms => (ms == null || !isFinite(ms)) ? '—' : fmtNum(ms * SPEED.f, SPEED.dec);
+
+let toastTimer = 0;
+function toast(msg, ms = 5000) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, ms); }
+const errMsg = e => (e && (e.message || e.name)) || String(e);
+
+/* ---------- Stato ---------- */
+const A = {
+  sessions: [],        // {key, label, kind, id?, zip?, folder?}
+  cur: null,           // {key, label, kind, frames}
+  i: 0,
+  cyc: null,           // {name, text, tab, cols, map, sensors}
+  offset: 0,
+  values: [],          // per sensore attivo: Float64Array lunga quanto i frame
+  metric: 'sog',
+  playing: false, playTimer: 0,
+  exporting: null,
+  photoUrl: null, photoToken: 0
+};
+
+/* ---------- Archivio del telefono ---------- */
+let dbPromise = null;
+function openDB() {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((res, rej) => {
+    if (!('indexedDB' in window)) return rej(new Error('Archivio del browser non disponibile'));
+    const r = indexedDB.open('cronoscatto', 2);
+    r.onupgradeneeded = () => {
+      const db = r.result;
+      if (!db.objectStoreNames.contains('frames')) db.createObjectStore('frames', { keyPath: 'id', autoIncrement: true }).createIndex('session', 'session');
+      if (!db.objectStoreNames.contains('cyclops')) db.createObjectStore('cyclops', { keyPath: 'session' });
+    };
+    r.onsuccess = () => { const db = r.result; db.onversionchange = () => { db.close(); dbPromise = null; }; res(db); };
+    r.onerror = () => rej(r.error);
+    r.onblocked = () => toast('Chiudi le altre schede di Cronoscatto aperte e ricarica la pagina.', 9000);
+  });
+  return dbPromise;
+}
+function idbReq(store, mode, fn) {
+  return openDB().then(db => new Promise((res, rej) => {
+    const t = db.transaction(store, mode), st = t.objectStore(store);
+    const req = fn(st);
+    t.oncomplete = () => res(req ? req.result : undefined);
+    t.onerror = () => rej(t.error); t.onabort = () => rej(t.error || new Error('Transazione annullata'));
+  }));
+}
+async function listIdbSessions() {
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const t = db.transaction('frames', 'readonly'), idx = t.objectStore('frames').index('session');
+    const counts = new Map();
+    const req = idx.openKeyCursor();
+    req.onsuccess = () => { const c = req.result; if (c) { counts.set(c.key, (counts.get(c.key) || 0) + 1); c.continue(); } };
+    t.oncomplete = () => res([...counts.entries()].map(([id, count]) => ({ id, count })).sort((a, b) => b.id - a.id));
+    t.onerror = () => rej(t.error);
+  });
+}
+async function loadIdbFrames(id) {
+  const recs = await idbReq('frames', 'readonly', st => st.index('session').getAll(id));
+  return recs.sort((a, b) => a.n - b.n).map(r => ({
+    n: r.n, ts: r.ts, lat: r.lat, lon: r.lon, acc: r.acc, ms: r.ms, cog: r.cog, src: r.src, w: r.w, h: r.h,
+    unit: r.unit, band: r.band || null, size: r.size, file: `${ymdhms(r.ts)}_${p4(r.n)}.jpg`, getBlob: () => Promise.resolve(r.blob)
+  }));
+}
+const cycSave = rec => idbReq('cyclops', 'readwrite', st => st.put(rec)).catch(() => {});
+const cycLoad = key => idbReq('cyclops', 'readonly', st => st.get(key)).catch(() => null);
+const cycDelete = key => idbReq('cyclops', 'readwrite', st => st.delete(key)).catch(() => {});
+
+/* ---------- Lettura ZIP (senza caricare tutto in memoria) ---------- */
+async function openZip(file) {
+  const tailLen = Math.min(file.size, 65557);
+  const tail = new DataView(await file.slice(file.size - tailLen).arrayBuffer());
+  let e = -1;
+  for (let i = tail.byteLength - 22; i >= 0; i--) if (tail.getUint32(i, true) === 0x06054b50) { e = i; break; }
+  if (e < 0) throw new Error('Il file non è uno ZIP valido.');
+  let count = tail.getUint16(e + 10, true), cdSize = tail.getUint32(e + 12, true), cdOff = tail.getUint32(e + 16, true);
+  const u64 = (dv, p) => dv.getUint32(p, true) + dv.getUint32(p + 4, true) * 4294967296;
+  if ((cdOff === 0xFFFFFFFF || count === 0xFFFF || cdSize === 0xFFFFFFFF) && e >= 20 && tail.getUint32(e - 20, true) === 0x07064b50) {
+    const z64 = u64(tail, e - 12);
+    const dv = new DataView(await file.slice(z64, z64 + 56).arrayBuffer());
+    count = u64(dv, 32); cdSize = u64(dv, 40); cdOff = u64(dv, 48);
+  }
+  const cd = new DataView(await file.slice(cdOff, cdOff + cdSize).arrayBuffer());
+  const dec = new TextDecoder();
+  const entries = [];
+  let p = 0;
+  while (p + 46 <= cd.byteLength && cd.getUint32(p, true) === 0x02014b50) {
+    const method = cd.getUint16(p + 10, true);
+    let csize = cd.getUint32(p + 20, true), usize = cd.getUint32(p + 24, true), loff = cd.getUint32(p + 42, true);
+    const nlen = cd.getUint16(p + 28, true), xlen = cd.getUint16(p + 30, true), clen = cd.getUint16(p + 32, true);
+    const name = dec.decode(new Uint8Array(cd.buffer, p + 46, nlen));
+    if (usize === 0xFFFFFFFF || csize === 0xFFFFFFFF || loff === 0xFFFFFFFF) {
+      let x = p + 46 + nlen; const xend = x + xlen;
+      while (x + 4 <= xend) {
+        const id = cd.getUint16(x, true), sz = cd.getUint16(x + 2, true);
+        if (id === 1) { let q = x + 4; if (usize === 0xFFFFFFFF) { usize = u64(cd, q); q += 8; } if (csize === 0xFFFFFFFF) { csize = u64(cd, q); q += 8; } if (loff === 0xFFFFFFFF) loff = u64(cd, q); }
+        x += 4 + sz;
+      }
+    }
+    if (!name.startsWith('__MACOSX') && !/(^|\/)\._/.test(name) && !name.endsWith('/')) entries.push({ name, method, csize, usize, loff });
+    p += 46 + nlen + xlen + clen;
+  }
+  async function blob(en, type) {
+    const h = new DataView(await file.slice(en.loff, en.loff + 30).arrayBuffer());
+    const start = en.loff + 30 + h.getUint16(26, true) + h.getUint16(28, true);
+    const raw = file.slice(start, start + en.csize);
+    if (en.method === 0) return new Blob([raw], { type });
+    if (en.method === 8 && 'DecompressionStream' in window) {
+      const s = raw.stream().pipeThrough(new DecompressionStream('deflate-raw'));
+      return new Blob([await new Response(s).arrayBuffer()], { type });
+    }
+    throw new Error('Questo ZIP usa una compressione non supportata. Usa lo ZIP creato da Cronoscatto.');
+  }
+  return { entries, blob };
+}
+function splitCSVLine(line, d) {
+  const out = []; let cur = '', q = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (q) { if (c === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += c; }
+    else if (c === '"') q = true;
+    else if (c === d) { out.push(cur.trim()); cur = ''; }
+    else cur += c;
+  }
+  out.push(cur.trim());
+  return out;
+}
+function parseDati(text) {
+  const lines = text.replace(/^﻿/, '').split(/\r\n|\n|\r/).filter(l => l.trim());
+  const head = splitCSVLine(lines[0], ',');
+  const ix = k => head.indexOf(k);
+  const num = s => { if (s == null || s === '') return null; const v = Number(s); return isFinite(v) ? v : null; };
+  return lines.slice(1).map(l => {
+    const c = splitCSVLine(l, ',');
+    const ts = Date.parse(c[ix('data_ora_iso')]);
+    return {
+      file: c[ix('file')], n: Number(c[ix('frame')]), ts,
+      lat: num(c[ix('lat')]), lon: num(c[ix('lon')]), acc: num(c[ix('accuratezza_m')]),
+      ms: num(c[ix('sog_ms')]), cog: num(c[ix('cog_deg')]), src: SRC_BACK[c[ix('fonte_sog')]] || 'wait'
+    };
+  }).filter(f => isFinite(f.ts));
+}
+async function addZip(file) {
+  const z = await openZip(file);
+  const byName = new Map(z.entries.map(e => [e.name, e]));
+  const folders = new Map();
+  for (const e of z.entries) {
+    const slash = e.name.lastIndexOf('/'), folder = slash >= 0 ? e.name.slice(0, slash + 1) : '';
+    if (!folders.has(folder)) folders.set(folder, { csv: null, jpgs: [] });
+    if (/(^|\/)dati\.csv$/i.test(e.name)) folders.get(folder).csv = e;
+    else if (/\.jpe?g$/i.test(e.name)) folders.get(folder).jpgs.push(e);
+  }
+  const added = [];
+  for (const [folder, g] of folders) {
+    if (!g.jpgs.length) continue;
+    let frames;
+    if (g.csv) {
+      const text = await (await z.blob(g.csv, 'text/csv')).text();
+      frames = parseDati(text).filter(f => byName.has(folder + f.file));
+    } else {
+      frames = g.jpgs.map(e => {
+        const m = /(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})_(\d{4})\.jpe?g$/i.exec(e.name);
+        if (!m) return null;
+        return { file: e.name.slice(folder.length), n: Number(m[7]), ts: new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime(), lat: null, lon: null, ms: null, cog: null, acc: null, src: 'wait' };
+      }).filter(Boolean);
+    }
+    frames.sort((a, b) => a.ts - b.ts);
+    for (const f of frames) {
+      const en = byName.get(folder + f.file);
+      f.size = en ? en.csize : 0; f.band = null;
+      f.getBlob = () => z.blob(en, 'image/jpeg');
+    }
+    if (!frames.length) continue;
+    const d = new Date(frames[0].ts);
+    const key = `zip:${folder || file.name}:${frames[0].ts}`;
+    const s = { key, kind: 'zip', label: `${dmy(d)} ${hm(d)} · ${frames.length} foto · ZIP`, frames };
+    A.sessions = A.sessions.filter(x => x.key !== key);
+    A.sessions.push(s); added.push(s);
+  }
+  if (!added.length) throw new Error('Nello ZIP non ci sono foto di Cronoscatto.');
+  return added[0];
+}
+
+/* ---------- Dati di esempio (generati, non misure reali) ---------- */
+function rng(seed) { return () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }; }
+function makeDemo() {
+  const rnd = rng(7), base = new Date(); base.setHours(14, 2, 0, 0);
+  const t0 = base.getTime(), N = 240, R = 6371008.8, rad = Math.PI / 180;
+  let lat = 45.7372, lon = 10.7752;
+  const frames = [], knAt = [];
+  for (let k = 0; k < N; k++) {
+    const leg = Math.floor(k / 60), tin = k % 60;
+    let kn = 17 + 2.4 * Math.sin(k / 9) + 1.1 * Math.sin(k / 3.7) + (rnd() - 0.5) * 0.6;
+    let hdg = leg % 2 ? 158 : 202;
+    if (leg > 0 && tin < 9) { kn = 6.5 + (kn - 6.5) * Math.pow(tin / 9, 1.6); if (tin < 4) hdg = (leg % 2 ? 202 : 158) + (hdg - (leg % 2 ? 202 : 158)) * tin / 4; }
+    knAt.push(kn);
+    const ms = kn / 1.9438445;
+    lat += ms * Math.cos(hdg * rad) / R / rad;
+    lon += ms * Math.sin(hdg * rad) / (R * Math.cos(lat * rad)) / rad;
+    frames.push({ n: k + 1, ts: t0 + k * 1000, lat, lon, acc: 3 + rnd() * 3, ms, cog: hdg, src: 'gps', unit: 'kn', w: 1280, h: 720, size: 160000, file: `${ymdhms(t0 + k * 1000)}_${p4(k + 1)}.jpg` });
+  }
+  for (const f of frames) { f.band = { y: 720 - Math.round(156 * 720 / 1080), h: Math.round(156 * 720 / 1080) }; f.getBlob = () => demoPhoto(f); }
+  // Log nello stesso formato di Smart Fittings Manager (1 campione al secondo, posizione GPS,
+  // una colonna per sensore). L'orologio del log è 3 s indietro, per mostrare l'allineamento automatico.
+  const rows = ['Timestamp, Latitude, Longitude, Heading,1555,1556', 'yyyy-MM-dd HH:mm:ss.SSS, °, °, °,kg,kg'];
+  const LAG = -3000;
+  for (let t = -15000 + 796; t <= N * 1000 + 15000; t += 1000) {
+    const k = Math.max(0, Math.min(N - 1, t / 1000)), k0 = Math.floor(k), k1 = Math.min(N - 1, k0 + 1), a = k - k0;
+    const kn = knAt[k0] + (knAt[k1] - knAt[k0]) * a;
+    const port = Math.floor(k / 60) % 2 === 1;
+    const sheet = 260 + 24 * kn + 18 * Math.sin(t / 4700) + (rnd() - 0.5) * 22;
+    const shroud = (port ? 1480 : 620) + (port ? 34 : 9) * kn + (rnd() - 0.5) * 30;
+    const la = frames[k0].lat + (frames[k1].lat - frames[k0].lat) * a + (rnd() - 0.5) * 2e-5;
+    const lo = frames[k0].lon + (frames[k1].lon - frames[k0].lon) * a + (rnd() - 0.5) * 2e-5;
+    const d = new Date(t0 + t + LAG);
+    rows.push(`${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${hms(d)}.${String(d.getMilliseconds()).padStart(3, '0')}, ${la.toFixed(8)}, ${lo.toFixed(8)},${(frames[k0].cog + (rnd() - 0.5) * 30).toFixed(1).padStart(5)},${sheet.toFixed(1).padStart(6)},${shroud.toFixed(1).padStart(6)},`);
+  }
+  return { key: 'demo', kind: 'demo', label: 'Esempio · 240 foto', frames, cycText: rows.join('\n'), cycName: 'esempio_cyclops.csv' };
+}
+function demoPhoto(f) {
+  const c = document.createElement('canvas'); c.width = f.w; c.height = f.h;
+  const x = c.getContext('2d'), w = f.w, h = f.h;
+  const heel = (f.cog > 180 ? 1 : -1) * (2 + (f.ms * 1.94) / 6);
+  x.save(); x.translate(w / 2, h * 0.42); x.rotate(heel * Math.PI / 180);
+  let g = x.createLinearGradient(0, -h, 0, 0); g.addColorStop(0, '#6f9cc6'); g.addColorStop(1, '#cfe0ee');
+  x.fillStyle = g; x.fillRect(-w, -h, 2 * w, h);
+  g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#3d6f8c'); g.addColorStop(1, '#10324a');
+  x.fillStyle = g; x.fillRect(-w, 0, 2 * w, h);
+  x.strokeStyle = 'rgba(255,255,255,.18)'; x.lineWidth = 2;
+  for (let i = 1; i < 9; i++) { const y = i * i * 6, ph = (f.n * 37 + i * 50) % 160; x.beginPath(); for (let k = -w; k < w; k += 160) { x.moveTo(k + ph, y); x.lineTo(k + ph + 60 + i * 6, y); } x.stroke(); }
+  x.restore();
+  x.fillStyle = 'rgba(255,255,255,.22)'; x.font = `700 ${Math.round(h * 0.16)}px ${FONT}`; x.textAlign = 'center'; x.fillText('ESEMPIO', w / 2, h * 0.36);
+  const s = Math.min(w, h) / 1080, pad = Math.round(32 * s), y0 = f.band.y, big = Math.round(92 * s), small = Math.round(31 * s);
+  x.fillStyle = STAMP.band; x.fillRect(0, y0, w, f.band.h);
+  x.fillStyle = STAMP.accent; x.fillRect(0, y0, w, Math.max(2, Math.round(5 * s)));
+  x.textAlign = 'left'; x.fillStyle = STAMP.ink; x.font = `700 ${big}px ${FONT}`; x.fillText(hms(new Date(f.ts)), pad, y0 + Math.round(104 * s));
+  x.fillStyle = STAMP.soft; x.font = `600 ${small}px ${FONT}`; x.fillText(`${dmy(new Date(f.ts))}   #${p4(f.n)}`, pad, y0 + Math.round(142 * s));
+  x.textAlign = 'right'; x.fillStyle = STAMP.ink; x.font = `600 ${Math.round(46 * s)}px ${FONT}`;
+  const uw = x.measureText('kn').width; x.fillText('kn', w - pad, y0 + Math.round(104 * s));
+  x.fillStyle = STAMP.accent; x.font = `700 ${big}px ${FONT}`; x.fillText(fmtNum(f.ms * 1.9438445, 1), w - pad - uw - Math.round(12 * s), y0 + Math.round(104 * s));
+  x.fillStyle = STAMP.soft; x.font = `600 ${small}px ${FONT}`; x.fillText(stampNote(f), w - pad, y0 + Math.round(142 * s));
+  return new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
+}
+function stampNote(f) {
+  const acc = f.acc != null ? ` · ±${Math.round(f.acc)} m` : '';
+  switch (f.src) {
+    case 'gps': return `SOG da GPS${acc}`;
+    case 'calc': return `SOG calcolata${acc}`;
+    case 'nospeed': return `SOG in calcolo${acc}`;
+    case 'stale': return 'GPS non aggiornato';
+    case 'wait': return 'GPS in attesa del segnale';
+    case 'denied': return 'GPS non autorizzato';
+    default: return 'GPS non disponibile';
+  }
+}
+
+/* ---------- CSV Cyclops: lettura tollerante ---------- */
+const isNumLike = s => /^[-+]?(\d+([.,]\d*)?|[.,]\d+)([eE][-+]?\d+)?$/.test(s);
+const toNum = s => { if (s == null || s === '') return NaN; const v = Number(String(s).replace(',', '.')); return isFinite(v) ? v : NaN; };
+const RE_YMD = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:[T ,]+(\d{1,2}):(\d{2})(?::(\d{2})(?:[.,](\d+))?)?\s*(AM|PM)?)?\s*(Z|UTC|GMT|[+-]\d{2}:?\d{2})?$/i;
+const RE_DMY = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})(?:[T ,]+(\d{1,2}):(\d{2})(?::(\d{2})(?:[.,](\d+))?)?\s*(AM|PM)?)?\s*(Z|UTC|GMT|[+-]\d{2}:?\d{2})?$/i;
+const RE_TIME = /^(\d{1,2}):(\d{2})(?::(\d{2})(?:[.,](\d+))?)?\s*(AM|PM)?$/i;
+function mkTime(y, mo, d, h, mi, s, frac, ampm, zone, utc) {
+  h = Number(h || 0); mi = Number(mi || 0); s = Number(s || 0);
+  const ms = frac ? Math.round(Number('0.' + frac) * 1000) : 0;
+  if (ampm) { h = h % 12 + (/pm/i.test(ampm) ? 12 : 0); }
+  if (y < 100) y += 2000;
+  if (zone) {
+    let off = 0;
+    if (!/^(Z|UTC|GMT)$/i.test(zone)) { const m = /([+-])(\d{2}):?(\d{2})/.exec(zone); off = (m[1] === '-' ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3])); }
+    return Date.UTC(y, mo - 1, d, h, mi, s, ms) - off * 60000;
+  }
+  return utc ? Date.UTC(y, mo - 1, d, h, mi, s, ms) : new Date(y, mo - 1, d, h, mi, s, ms).getTime();
+}
+// Restituisce {kind:'datetime'|'date'|'time', v} oppure null
+function parseTimeCell(s, o = {}) {
+  s = String(s).trim();
+  if (!s) return null;
+  let m = RE_YMD.exec(s);
+  if (m) return { kind: m[4] != null ? 'datetime' : 'date', v: mkTime(+m[1], +m[2], +m[3], m[4], m[5], m[6], m[7], m[8], m[9], o.utc) };
+  m = RE_DMY.exec(s);
+  if (m) {
+    let a = +m[1], b = +m[2];
+    const [d, mo] = o.order === 'mdy' ? [b, a] : [a, b];
+    return { kind: m[4] != null ? 'datetime' : 'date', v: mkTime(+m[3], mo, d, m[4], m[5], m[6], m[7], m[8], m[9], o.utc) };
+  }
+  m = RE_TIME.exec(s);
+  if (m) {
+    let h = +m[1]; if (m[5]) h = h % 12 + (/pm/i.test(m[5]) ? 12 : 0);
+    return { kind: 'time', v: ((h * 60 + +m[2]) * 60 + +(m[3] || 0)) * 1000 + (m[4] ? Math.round(Number('0.' + m[4]) * 1000) : 0) };
+  }
+  if (/[a-z]{3}/i.test(s) && /\d{1,2}:\d{2}/.test(s)) {
+    const v = Date.parse(s);
+    if (isFinite(v)) return { kind: 'datetime', v };
+  }
+  return null;
+}
+function detectDelim(lines) {
+  const sample = lines.filter(l => l.trim()).slice(0, 60);
+  let best = ',', bestScore = -1;
+  for (const d of [';', '\t', ',', '|']) {
+    const freq = new Map();
+    for (const l of sample) { const n = splitCSVLine(l, d).length; freq.set(n, (freq.get(n) || 0) + 1); }
+    const [mode, n] = [...freq.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0] || [0, 0];
+    const score = mode >= 2 ? n * 1000 + mode : -1;
+    if (score > bestScore) { bestScore = score; best = d; }
+  }
+  return best;
+}
+const UNIT_RE = /[\(\[]\s*(kgf|kg|t|tonnes?|tons?|lbs?|kn|kN|daN|N)\s*[\)\]]/i;
+const UNIT_WORD = /^(kgf|kg|t|tonnes?|tons?|lbs?|kN|daN|N)$/i;
+const EXCLUDE_RE = /lat|lon|lng|alt|speed|veloc|sog|cog|head|course|rotta|accur|batt|rssi|signal|segnale|temp|volt|^id$|^#$|^n\.?$|^no\.?$|index|indice|sample|campione|seq|status|stato/i;
+const LOAD_RE = /load|carico|kg|kgf|tension|tensione|force|forza|value|valore|tonn|lbs|\bkn\b|dan/i;
+const TIME_NAME = /time|date|ora|data|stamp|utc|tempo|orario/i;
+function parseTable(text) {
+  const lines = text.replace(/^﻿/, '').split(/\r\n|\n|\r/);
+  const delim = detectDelim(lines);
+  const rows = lines.map(l => {
+    if (!l.trim()) return null;
+    const r = splitCSVLine(l, delim);
+    // Cyclops chiude ogni riga con un separatore: l'ultima cella vuota non è una colonna
+    if (r.length > 1 && r[r.length - 1] === '' && l.replace(/[ \r]+$/, '').endsWith(delim)) r.pop();
+    return r;
+  });
+  const freq = new Map();
+  rows.forEach(r => { if (r && r.length >= 2) freq.set(r.length, (freq.get(r.length) || 0) + 1); });
+  const top = [...freq.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0];
+  if (!top) throw new Error('Non trovo colonne nel file: serve un CSV con almeno due colonne.');
+  const ncol = top[0];
+  const first = rows.findIndex(r => r && r.length === ncol);
+  let header = rows[first], start = first + 1;
+  const textCells = header.filter(c => c && !isNumLike(c) && !parseTimeCell(c)).length;
+  if (textCells < Math.ceil(ncol / 2)) { header = header.map((_, i) => `Colonna ${i + 1}`); start = first; }
+  header = header.map((h, i) => h || `Colonna ${i + 1}`);
+  // Riga delle unità sotto l'intestazione (Cyclops: "yyyy-MM-dd HH:mm:ss.SSS, °, °, °, kg")
+  let units = header.map(() => '');
+  const nx = rows[start];
+  if (start > first && nx && nx.length >= ncol && nx.slice(0, ncol).every(c => !c || (!isNumLike(c) && !parseTimeCell(c)))) { units = nx.slice(0, ncol); start++; }
+  const data = [];
+  for (let i = start; i < rows.length; i++) { const r = rows[i]; if (r && r.length >= ncol) data.push(r.length > ncol ? r.slice(0, ncol) : r); }
+  if (!data.length) throw new Error('Il file non contiene righe di dati.');
+  return { delim, header, units, data, meta: lines.slice(0, first).join('\n'), preview: lines.slice(0, 12).join('\n') };
+}
+function analyzeCols(tab) {
+  return tab.header.map((name, j) => {
+    const vals = [];
+    for (let i = 0; i < tab.data.length && vals.length < 400; i += Math.max(1, Math.floor(tab.data.length / 400))) { const v = tab.data[i][j]; if (v !== '') vals.push(v); }
+    const nNum = vals.filter(isNumLike).length;
+    const numeric = vals.length > 0 && nNum / vals.length >= 0.8;
+    let time = null;
+    if (numeric) {
+      const nums = vals.map(toNum).filter(isFinite).sort((a, b) => a - b), med = nums[Math.floor(nums.length / 2)];
+      if (med > 9e8 && med < 4.2e9) time = 'epoch_s';
+      else if (med > 9e11 && med < 4.2e12) time = 'epoch_ms';
+      else if (TIME_NAME.test(name) || /elapsed|second|secs?$|^t$/i.test(name)) {
+        let mono = true; for (let i = 1; i < nums.length; i++) if (toNum(vals[i]) < toNum(vals[i - 1])) { mono = false; break; }
+        if (mono) time = 'elapsed';
+      }
+    } else if (vals.length) {
+      const kinds = vals.map(v => parseTimeCell(v)?.kind).filter(Boolean);
+      if (kinds.length / vals.length >= 0.8) {
+        const c = k => kinds.filter(x => x === k).length;
+        time = c('datetime') >= c('time') && c('datetime') >= c('date') ? 'datetime' : c('time') >= c('date') ? 'time' : 'date';
+      }
+    }
+    const distinct = numeric || time ? 0 : new Set(vals).size;
+    const unitMatch = UNIT_RE.exec(name), rowUnit = (tab.units && tab.units[j]) || '';
+    let label = name.replace(UNIT_RE, '').trim() || name;
+    if (/^\d+$/.test(label)) label = `Sensore ${label}`;
+    const geo = numeric ? (/^lat/i.test(name) ? 'lat' : /^(lon|lng)/i.test(name) ? 'lon' : null) : null;
+    return { j, name, numeric, time, distinct, geo, unit: unitMatch ? unitMatch[1] : (UNIT_WORD.test(rowUnit) ? rowUnit : ''), label, unitCol: !numeric && !time && vals.length > 0 && vals.every(v => UNIT_WORD.test(v)) };
+  });
+}
+function guessMap(tab, cols) {
+  const timeCols = cols.filter(c => c.time && c.time !== 'date');
+  const timeCol = (timeCols.find(c => c.time === 'datetime' || c.time.startsWith('epoch')) || timeCols.find(c => TIME_NAME.test(c.name)) || timeCols[0] || {}).j;
+  const textCols = cols.filter(c => !c.numeric && !c.time && !c.unitCol && c.distinct >= 1 && c.distinct <= 30);
+  const sensorCol = (textCols.find(c => /sensor|sensore|name|nome|fitting|device|serial|channel|canale|id/i.test(c.name)) || (textCols.length === 1 ? textCols[0] : null) || {}).j;
+  let loads = cols.filter(c => c.numeric && !c.time && !EXCLUDE_RE.test(c.name));
+  const strong = loads.filter(c => LOAD_RE.test(c.name));
+  if (strong.length) loads = strong;
+  if (!loads.length) loads = cols.filter(c => c.numeric && !c.time);
+  const unitCol = cols.find(c => c.unitCol);
+  let unit = (loads.find(c => c.unit) || {}).unit || '';
+  if (!unit && unitCol) unit = tab.data[0][unitCol.j];
+  if (!unit) { const m = /\b(kgf|kg|tonnes|lbs|kN|daN)\b/i.exec(tab.meta); if (m) unit = m[1]; }
+  return { timeCol: timeCol == null ? -1 : timeCol, tz: 'local', sensorCol: sensorCol == null ? -1 : sensorCol, values: loads.slice(0, sensorCol != null ? 1 : 3).map(c => c.j), unit: unit || 'kg' };
+}
+function buildSensors(tab, cols, map, baseTs) {
+  const tc = cols[map.timeCol];
+  if (!tc) throw new Error('Scegli la colonna con l\'ora.');
+  if (!map.values.length) throw new Error('Scegli almeno una colonna di carico.');
+  const utc = map.tz === 'utc';
+  let order = 'dmy';
+  if (tc.time === 'datetime' || tc.time === 'date') {
+    for (const r of tab.data) { const m = RE_DMY.exec(r[tc.j]); if (m) { if (+m[2] > 12) { order = 'mdy'; break; } if (+m[1] > 12) break; } }
+  }
+  const dateCol = tc.time === 'time' ? cols.find(c => c.time === 'date') : null;
+  const midnight = (() => { const d = new Date(baseTs); return utc ? Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) : new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); })();
+  let firstElapsed = null;
+  const T = tab.data.map(r => {
+    const s = r[tc.j];
+    switch (tc.time) {
+      case 'epoch_s': return toNum(s) * 1000;
+      case 'epoch_ms': return toNum(s);
+      case 'elapsed': { const v = toNum(s); if (firstElapsed == null && isFinite(v)) firstElapsed = v; return baseTs + (v - (firstElapsed || 0)) * 1000; }
+      case 'time': {
+        const p = parseTimeCell(s); if (!p) return NaN;
+        if (dateCol) { const d = parseTimeCell(r[dateCol.j], { utc, order }); return d ? d.v + p.v : NaN; }
+        return midnight + p.v;
+      }
+      default: { const p = parseTimeCell(s, { utc, order }); return p ? p.v : NaN; }
+    }
+  });
+  const groups = new Map();
+  const add = (name, unit, t, v) => {
+    if (!isFinite(t) || !isFinite(v)) return;
+    if (!groups.has(name)) groups.set(name, { name, unit, pts: [] });
+    groups.get(name).pts.push([t, v]);
+  };
+  let missing = 0;
+  if (map.sensorCol >= 0) {
+    const vc = cols[map.values[0]];
+    tab.data.forEach((r, i) => { const v = toNum(r[vc.j]); if (isFinite(T[i]) && !isFinite(v)) missing++; add(r[map.sensorCol] || vc.label, map.unit, T[i], v); });
+  } else {
+    tab.data.forEach((r, i) => { if (isFinite(T[i]) && map.values.every(j => !isFinite(toNum(r[j])))) missing++; });
+    for (const j of map.values) { const c = cols[j]; tab.data.forEach((r, i) => add(c.label, map.unit, T[i], toNum(r[j]))); }
+  }
+  // Posizioni GPS del log (servono per allineare gli orologi confrontando le due tracce)
+  let gps = null;
+  const cLat = cols.find(c => c.geo === 'lat'), cLon = cols.find(c => c.geo === 'lon');
+  if (cLat && cLon) {
+    const pts = [];
+    tab.data.forEach((r, i) => { const a = toNum(r[cLat.j]), b = toNum(r[cLon.j]); if (isFinite(T[i]) && isFinite(a) && isFinite(b) && (a || b)) pts.push([T[i], a, b]); });
+    pts.sort((p, q) => p[0] - q[0]);
+    if (pts.length >= 10) gps = { t: Float64Array.from(pts, p => p[0]), lat: Float64Array.from(pts, p => p[1]), lon: Float64Array.from(pts, p => p[2]) };
+  }
+  const sensors = [...groups.values()].map(g => {
+    g.pts.sort((a, b) => a[0] - b[0]);
+    const t = Float64Array.from(g.pts, p => p[0]), v = Float64Array.from(g.pts, p => p[1]);
+    const dts = []; for (let i = 1; i < t.length && dts.length < 2000; i++) if (t[i] > t[i - 1]) dts.push(t[i] - t[i - 1]);
+    dts.sort((a, b) => a - b);
+    const step = dts.length ? dts[Math.floor(dts.length / 2)] : 1000;
+    let ints = true, big = 0;
+    for (let i = 0; i < v.length; i++) { if (Math.abs(v[i] - Math.round(v[i])) > 1e-9) ints = false; big = Math.max(big, Math.abs(v[i])); }
+    const dec = ints ? 0 : big >= 100 ? 0 : big >= 10 ? 1 : 2;
+    return { name: g.name, unit: g.unit, t, v, step, dec, gap: Math.max(3000, step * 2.5) };
+  }).filter(s => s.t.length);
+  if (!sensors.length) throw new Error('Non trovo valori di carico con un orario valido. Controlla la colonna ora e il formato.');
+  return { sensors, gps, missing, rows: tab.data.length, relative: tc.time === 'elapsed' };
+}
+// Cerca lo scostamento (in secondi) che sovrappone la traccia GPS del log a quella delle foto
+function gpsAlign() {
+  const g = A.cyc && A.cyc.gps;
+  const fr = A.cur ? A.cur.frames.filter(f => f.lat != null && f.lon != null) : [];
+  if (!g || fr.length < 10) return { ok: false, why: g ? 'Le foto di questa sessione non hanno posizioni GPS.' : 'Il file Cyclops non contiene posizioni GPS.' };
+  const n = g.t.length, R = 6371008.8, rad = Math.PI / 180, kx = Math.cos(fr[0].lat * rad) * rad * R, ky = rad * R;
+  let P = fr.filter(f => f.ms != null && f.ms > 1.5);
+  if (P.length < 10) P = fr;
+  const st = Math.max(1, Math.floor(P.length / 300)); P = P.filter((_, i) => i % st === 0);
+  const at = t => {
+    if (t < g.t[0] || t > g.t[n - 1]) return null;
+    let lo = 0, hi = n - 1;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (g.t[m] < t) lo = m + 1; else hi = m; }
+    if (lo === 0) return [g.lat[0], g.lon[0]];
+    const t0 = g.t[lo - 1], t1 = g.t[lo];
+    if (t1 - t0 > 5000) return null;
+    const a = t1 > t0 ? (t - t0) / (t1 - t0) : 0;
+    return [g.lat[lo - 1] + (g.lat[lo] - g.lat[lo - 1]) * a, g.lon[lo - 1] + (g.lon[lo] - g.lon[lo - 1]) * a];
+  };
+  const need = Math.max(8, Math.floor(P.length * 0.25));
+  const score = off => {
+    const d = [];
+    for (const f of P) { const q = at(f.ts - off); if (!q) continue; const dy = (q[0] - f.lat) * ky, dx = (q[1] - f.lon) * kx; d.push(dx * dx + dy * dy); }
+    if (d.length < need) return Infinity;
+    d.sort((a, b) => a - b);
+    return Math.sqrt(d[d.length >> 1]);
+  };
+  const LIM = 26 * 3600e3;
+  let lo = Math.max(-LIM, fr[0].ts - g.t[n - 1]), hi = Math.min(LIM, fr[fr.length - 1].ts - g.t[0]);
+  if (lo > hi) return { ok: false, why: 'Il log Cyclops e le foto sono di giorni diversi.' };
+  let best = 0, bs = Infinity;
+  const scan = (a, b, step) => { for (let o = a; o <= b; o += step) { const s = score(o); if (s < bs) { bs = s; best = o; } } };
+  const step = Math.max(1000, Math.ceil((hi - lo) / 3000));
+  scan(lo, hi, step);
+  if (!isFinite(bs)) return { ok: false, why: 'Le due tracce non si sovrappongono abbastanza.' };
+  const c1 = best; scan(c1 - 2 * step, c1 + 2 * step, 1000);
+  const c2 = best; scan(c2 - 1500, c2 + 1500, 100);
+  if (bs > 30) return { ok: false, why: `Le due tracce non coincidono (distanza mediana ${Math.round(bs)} m).` };
+  return { ok: true, off: Math.round(best / 100) / 10, dist: bs };
+}
+function applyGpsAlign(silent) {
+  const r = gpsAlign();
+  if (!r.ok) { if (!silent) toast('Allineamento con il GPS non riuscito. ' + r.why, 8000); return false; }
+  A.offset = r.off; $('#offset').value = A.offset;
+  syncValues(); persistSoon();
+  const h = Math.round(r.off / 3600), hint = Math.abs(r.off) >= 1800 ? ` (circa ${Math.abs(h)} h: il log usa un altro fuso orario)` : '';
+  toast(`Allineato con il GPS: carico spostato di ${fmtNum(r.off, 1)} s${hint}. Distanza mediana fra le due tracce: ${Math.max(1, Math.round(r.dist))} m.`, 8000);
+  return true;
+}
+function interp(s, t) {
+  const T = s.t, V = s.v, n = T.length;
+  if (!n || t < T[0] - 1000 || t > T[n - 1] + 1000) return NaN;
+  let lo = 0, hi = n;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (T[m] < t) lo = m + 1; else hi = m; }
+  if (lo === 0) return V[0];
+  if (lo >= n) return V[n - 1];
+  const t0 = T[lo - 1], t1 = T[lo];
+  if (t1 - t0 <= s.gap) return t1 === t0 ? V[lo] : V[lo - 1] + (V[lo] - V[lo - 1]) * (t - t0) / (t1 - t0);
+  if (t - t0 <= 1000) return V[lo - 1];
+  if (t1 - t <= 1000) return V[lo];
+  return NaN;
+}
+
+/* ---------- Carico: import, mappatura, sincronizzazione ---------- */
+function activeSensors() { return A.cyc ? A.cyc.sensors.slice(0, 3) : []; }
+function cycKey() { return A.cur && A.cur.kind !== 'demo' ? A.cur.key : null; }
+async function importCyclops(name, text, saved) {
+  const tab = parseTable(text), cols = analyzeCols(tab);
+  const map = saved && saved.map && saved.map.sig === tab.header.join('|') ? saved.map : { ...guessMap(tab, cols), sig: tab.header.join('|') };
+  A.cyc = { name, text, tab, cols, map, sensors: [] };
+  A.offset = saved && isFinite(saved.offset) ? saved.offset : 0;
+  renderCycForm();
+  rebuildCyc(false);
+}
+function rebuildCyc(persist = true) {
+  const c = A.cyc;
+  if (!c || !A.cur) return;
+  try {
+    const r = buildSensors(c.tab, c.cols, c.map, A.cur.frames[0].ts);
+    c.sensors = r.sensors; c.gps = r.gps; c.relative = r.relative; c.missing = r.missing; c.rows = r.rows; c.error = null;
+  } catch (e) { c.sensors = []; c.gps = null; c.error = errMsg(e); }
+  $('#gpsAlign').hidden = !c.gps;
+  syncValues();
+  if (persist && cycKey()) cycSave({ session: cycKey(), name: c.name, text: c.text, map: c.map, offset: A.offset });
+}
+let saveTimer = 0;
+function persistSoon() { clearTimeout(saveTimer); saveTimer = setTimeout(() => { if (A.cyc && cycKey()) cycSave({ session: cycKey(), name: A.cyc.name, text: A.cyc.text, map: A.cyc.map, offset: A.offset }); }, 600); }
+function syncValues() {
+  const fr = A.cur ? A.cur.frames : [], off = A.offset * 1000;
+  A.values = activeSensors().map(s => { const out = new Float64Array(fr.length); for (let k = 0; k < fr.length; k++) out[k] = interp(s, fr[k].ts - off); return out; });
+  renderCycStatus(); renderMetricOptions(); renderReadouts(); drawTrack(); drawChart(); updateExportEst();
+}
+function renderCycForm() {
+  const c = A.cyc;
+  $('#cycEmpty').hidden = !!c; $('#cycBody').hidden = !c; $('#cycRemove').hidden = !c;
+  if (!c) return;
+  const opt = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; return o; };
+  const mt = $('#mTime'); mt.textContent = '';
+  c.cols.forEach(col => mt.append(opt(col.j, col.name + (col.time ? '' : ' (non sembra un orario)'))));
+  mt.value = c.map.timeCol;
+  $('#mTz').value = c.map.tz;
+  const ms = $('#mSensor'); ms.textContent = '';
+  ms.append(opt(-1, 'Nessuna'));
+  c.cols.filter(col => !col.numeric && !col.time).forEach(col => ms.append(opt(col.j, col.name)));
+  ms.value = c.map.sensorCol;
+  $('#mUnit').value = c.map.unit;
+  const fs = $('#mValues');
+  fs.querySelectorAll('label').forEach(l => l.remove());
+  c.cols.filter(col => col.numeric && !col.time).forEach(col => {
+    const l = document.createElement('label'); l.className = 'chk';
+    const i = document.createElement('input'); i.type = 'checkbox'; i.value = col.j; i.checked = c.map.values.includes(col.j);
+    i.addEventListener('change', () => {
+      const checked = [...fs.querySelectorAll('input:checked')].map(x => Number(x.value));
+      if (c.map.sensorCol >= 0 && checked.length > 1) { fs.querySelectorAll('input').forEach(x => { if (Number(x.value) !== col.j) x.checked = false; }); c.map.values = [col.j]; }
+      else c.map.values = checked;
+      rebuildCyc();
+    });
+    l.append(i, document.createTextNode(col.name)); fs.append(l);
+  });
+  $('#offset').value = A.offset;
+  $('#cycPreview').textContent = c.tab.preview;
+}
+function renderCycStatus() {
+  const c = A.cyc;
+  if (!c) return;
+  const info = $('#cycInfo'), cov = $('#cycCov');
+  if (c.error) { info.textContent = c.name; cov.textContent = c.error; cov.className = 'stat bad'; return; }
+  const all = c.sensors, n = all.reduce((a, s) => a + s.t.length, 0);
+  const tmin = Math.min(...all.map(s => s.t[0])), tmax = Math.max(...all.map(s => s.t[s.t.length - 1]));
+  const hz = all[0].step > 0 ? 1000 / all[0].step : 0;
+  info.textContent = `${c.name} · ${n.toLocaleString('it-IT')} campioni · ${all.length} ${all.length === 1 ? 'sensore' : 'sensori'} · ${hz >= 1 ? fmtNum(hz, hz < 10 ? 1 : 0) + ' Hz' : 'un campione ogni ' + fmtNum(1 / hz, 0) + ' s'} · ${hms(new Date(tmin))}–${hms(new Date(tmax))}${c.relative ? ' (orari relativi: allinea a mano)' : ''}`;
+  const fr = A.cur.frames, v0 = A.values[0] || [];
+  let hit = 0; for (let k = 0; k < fr.length; k++) if (isFinite(v0[k])) hit++;
+  const pct = fr.length ? Math.round(hit / fr.length * 100) : 0;
+  let msg = `Carico abbinato a ${hit} foto su ${fr.length} (${pct}%).`;
+  let cls = 'stat';
+  if (all.length > 3) msg += ` Il file ha ${all.length} sensori: grafico, mappa e foto mostrano i primi 3, il CSV unito li contiene tutti.`;
+  if (hit === 0) {
+    const f0 = fr[0].ts, d = (tmin + A.offset * 1000) - f0;
+    msg = `Nessuna foto cade dentro il log. Il log inizia ${Math.abs(d) < 86400000 ? fmtDurLong(Math.abs(d)) + (d > 0 ? ' dopo' : ' prima di') + ' la prima foto' : 'in un altro giorno'}: controlla il fuso orario o l'allineamento.`;
+    cls = 'stat bad';
+  } else if (pct < 90) cls = 'stat warn';
+  if (hit > 0 && hit < fr.length && c.missing > 0) msg += ` Il log ha ${c.missing.toLocaleString('it-IT')} righe su ${c.rows.toLocaleString('it-IT')} senza valore di carico (il telefono non riceveva il sensore): dove il vuoto supera 3 s, la foto resta senza carico.`;
+  cov.textContent = msg; cov.className = cls;
+}
+function fmtDurLong(ms) {
+  const s = Math.round(ms / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  if (h) return `${h} h ${m} min`;
+  if (m) return `${m} min ${s % 60} s`;
+  return `${s} s`;
+}
+
+/* ---------- Mappa ---------- */
+let map = null, trackLayer = null, marker = null, frameLayer = null;
+function initMap() {
+  if (!window.L) { $('#mapOff').hidden = false; $('#legend').hidden = true; return; }
+  map = L.map('map', { preferCanvas: true, zoomControl: true, attributionControl: true });
+  const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' });
+  const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Immagini © Esri' });
+  const sea = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© <a href="https://www.openseamap.org">OpenSeaMap</a>' });
+  osm.addTo(map); sea.addTo(map);
+  L.control.layers({ 'Mappa': osm, 'Satellite': sat }, { 'Segnalamenti': sea }, { position: 'topright' }).addTo(map);
+  L.control.scale({ imperial: false, position: 'bottomright' }).addTo(map);
+  trackLayer = L.layerGroup().addTo(map);
+  frameLayer = L.layerGroup().addTo(map);
+  map.setView([45.5, 10.5], 6);
+  map.on('click', e => {
+    const fr = A.cur ? A.cur.frames : [];
+    const pt = map.latLngToContainerPoint(e.latlng);
+    let best = -1, bd = 30 * 30;
+    for (let k = 0; k < fr.length; k++) {
+      const f = fr[k]; if (f.lat == null) continue;
+      const q = map.latLngToContainerPoint([f.lat, f.lon]), d = (q.x - pt.x) ** 2 + (q.y - pt.y) ** 2;
+      if (d < bd) { bd = d; best = k; }
+    }
+    if (best >= 0) select(best, { pan: false });
+  });
+}
+function metricSeries() {
+  const fr = A.cur ? A.cur.frames : [];
+  if (A.metric === 'sog') return { vals: fr.map(f => (f.ms == null ? NaN : f.ms * SPEED.f)), label: `Velocità (${SPEED.label})`, dec: SPEED.dec };
+  const j = Number(A.metric.slice(1)), s = activeSensors()[j];
+  if (!s || !A.values[j]) { A.metric = 'sog'; return metricSeries(); }
+  return { vals: Array.from(A.values[j]), label: `${s.name} (${s.unit})`, load: true };
+}
+function renderMetricOptions() {
+  const sel = $('#metric'), cur = A.metric;
+  sel.textContent = '';
+  const o = (v, t) => { const e = document.createElement('option'); e.value = v; e.textContent = t; sel.append(e); };
+  o('sog', `Colore: velocità (${SPEED.label})`);
+  activeSensors().forEach((s, j) => o('l' + j, `Colore: ${s.name}`));
+  sel.value = [...sel.options].some(x => x.value === cur) ? cur : 'sog';
+  A.metric = sel.value;
+}
+function quant(sorted, q) { if (!sorted.length) return NaN; return sorted[Math.min(sorted.length - 1, Math.max(0, Math.round(q * (sorted.length - 1))))]; }
+function drawTrack(fit = false) {
+  const fr = A.cur ? A.cur.frames : [];
+  const { vals, label, load, dec } = metricSeries();
+  const fin = vals.filter(isFinite).sort((a, b) => a - b);
+  let lo = quant(fin, 0.02), hi = quant(fin, 0.98);
+  if (!(hi > lo)) { hi = (lo || 0) + 1; }
+  $('#ramp').style.background = `linear-gradient(90deg, ${RAMP.join(',')})`;
+  const sj = load ? activeSensors()[Number(A.metric.slice(1))] : null;
+  const f = v => (load ? fmtLoad(v, sj && sj.dec) : fmtNum(v, dec));
+  $('#rampMin').textContent = fin.length ? f(lo) : '—';
+  $('#rampMax').textContent = fin.length ? `${f(hi)} ${load ? (activeSensors()[Number(A.metric.slice(1))] || {}).unit : SPEED.label}` : 'nessun dato';
+  if (!map) return;
+  trackLayer.clearLayers(); frameLayer.clearLayers(); marker = null;
+  const runs = []; let run = null;
+  const cls = v => (isFinite(v) ? Math.max(0, Math.min(RAMP.length - 1, Math.floor((v - lo) / (hi - lo) * RAMP.length))) : -1);
+  const all = []; let seg = [];
+  for (let k = 0; k < fr.length; k++) {
+    const p = fr[k];
+    if (p.lat == null || p.lon == null) { if (seg.length > 1) all.push(seg); seg = []; run = null; continue; }
+    const q = fr[k - 1];
+    const joined = q && q.lat != null && p.ts - q.ts <= 10000 && map.distance([q.lat, q.lon], [p.lat, p.lon]) < 500;
+    if (!joined) { if (seg.length > 1) all.push(seg); seg = [[p.lat, p.lon]]; run = null; continue; }
+    seg.push([p.lat, p.lon]);
+    const c = cls((vals[k - 1] + vals[k]) / 2);
+    if (run && run.c === c) run.pts.push([p.lat, p.lon]);
+    else { run = { c, pts: [[q.lat, q.lon], [p.lat, p.lon]] }; runs.push(run); }
+  }
+  if (seg.length > 1) all.push(seg);
+  for (const s of all) L.polyline(s, { color: '#0a1118', weight: 8, opacity: 0.85, interactive: false }).addTo(trackLayer);
+  for (const r of runs) L.polyline(r.pts, r.c < 0 ? { color: '#8b9cad', weight: 3, dashArray: '4 6', interactive: false } : { color: RAMP[r.c], weight: 4.5, interactive: false, lineCap: 'round' }).addTo(trackLayer);
+  const withPos = fr.filter(p => p.lat != null);
+  if (withPos.length) {
+    const a = withPos[0], b = withPos[withPos.length - 1];
+    L.circleMarker([a.lat, a.lon], { radius: 6, color: '#0a1118', weight: 2, fillColor: '#ffffff', fillOpacity: 1 }).bindTooltip(`Inizio ${hms(new Date(a.ts))}`, { direction: 'top' }).addTo(frameLayer);
+    L.circleMarker([b.lat, b.lon], { radius: 6, color: '#ffffff', weight: 2, fillColor: '#0a1118', fillOpacity: 1 }).bindTooltip(`Fine ${hms(new Date(b.ts))}`, { direction: 'top' }).addTo(frameLayer);
+    marker = L.circleMarker([a.lat, a.lon], { radius: 9, color: '#0a1118', weight: 3, fillColor: '#ffffff', fillOpacity: 1, interactive: false }).addTo(frameLayer);
+    if (fit) map.fitBounds(L.latLngBounds(withPos.map(p => [p.lat, p.lon])).pad(0.12));
+    placeMarker(false);
+  } else if (fit) {
+    toast('Questa sessione non ha posizioni GPS: la mappa resta vuota.');
+  }
+  $('#legend').title = label;
+}
+function placeMarker(pan) {
+  if (!map || !marker || !A.cur) return;
+  const f = A.cur.frames[A.i];
+  if (!f || f.lat == null) { marker.setStyle({ opacity: 0, fillOpacity: 0 }); return; }
+  marker.setStyle({ opacity: 1, fillOpacity: 1 });
+  marker.setLatLng([f.lat, f.lon]); marker.bringToFront();
+  if (pan && !map.getBounds().pad(-0.1).contains([f.lat, f.lon])) map.panTo([f.lat, f.lon], { animate: true });
+}
+
+/* ---------- Grafico ---------- */
+const CH = { padL: 48, padR: 12, top: 4, axis: 22, title: 18, gap: 14 };
+let chartGeo = null;
+function niceStep(range, n) {
+  const raw = range / Math.max(1, n), p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p;
+  return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p;
+}
+function niceDomain(lo, hi, n, zero) {
+  if (!isFinite(lo) || !isFinite(hi)) { lo = 0; hi = 1; }
+  if (zero) lo = Math.min(0, lo);
+  if (hi - lo < 1e-9) { hi = lo + 1; }
+  const st = niceStep(hi - lo, n);
+  lo = Math.floor(lo / st) * st; hi = Math.ceil(hi / st) * st;
+  const ticks = []; for (let v = lo; v <= hi + st / 2; v += st) ticks.push(+v.toFixed(6));
+  return { lo, hi, ticks, step: st };
+}
+function drawLine(ctx, T, V, x, y, gap, color, tMin, tMax) {
+  ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.beginPath();
+  let pen = false, lastT = -Infinity, bx = null, bmin = 0, bmax = 0, blast = 0;
+  const flush = () => { if (bx == null) return; ctx.lineTo(bx, y(bmin)); ctx.lineTo(bx, y(bmax)); ctx.lineTo(bx, y(blast)); };
+  for (let i = 0; i < T.length; i++) {
+    const t = T[i], v = V[i];
+    if (t < tMin - gap || t > tMax + gap) continue;
+    if (!isFinite(v) || t - lastT > gap) { flush(); bx = null; pen = false; }
+    if (!isFinite(v)) { lastT = -Infinity; continue; }
+    const px = Math.round(x(t));
+    if (!pen) { ctx.moveTo(px, y(v)); pen = true; bx = px; bmin = bmax = blast = v; }
+    else if (px === bx) { bmin = Math.min(bmin, v); bmax = Math.max(bmax, v); blast = v; }
+    else { flush(); ctx.lineTo(px, y(v)); bx = px; bmin = bmax = blast = v; }
+    lastT = t;
+  }
+  flush();
+  ctx.stroke();
+}
+function drawChart() {
+  const cv = $('#chart');
+  if (!A.cur || !cv.clientWidth) return;
+  const W = cv.clientWidth, H = cv.clientHeight, dpr = Math.min(3, window.devicePixelRatio || 1);
+  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const css = getComputedStyle(document.documentElement), tok = n => css.getPropertyValue(n).trim();
+  const fr = A.cur.frames, t0 = fr[0].ts, t1 = Math.max(fr[fr.length - 1].ts, t0 + 1000);
+  const sens = activeSensors(), hasLoad = sens.length > 0 && A.values.length > 0;
+  const panels = hasLoad ? 2 : 1;
+  const plotH = (H - CH.top - CH.axis - CH.gap * (panels - 1)) / panels;
+  const x = t => CH.padL + (t - t0) / (t1 - t0) * (W - CH.padL - CH.padR);
+  ctx.font = `500 11px ${getComputedStyle(document.body).fontFamily}`;
+  const geo = { x, t0, t1, W, H, panels: [] };
+  const panel = (k, title, dom, fmt) => {
+    const top = CH.top + k * (plotH + CH.gap), y0 = top + CH.title, y1 = top + plotH;
+    const y = v => y1 - (v - dom.lo) / (dom.hi - dom.lo) * (y1 - y0);
+    ctx.fillStyle = tok('--fg'); ctx.font = `600 12px ${getComputedStyle(document.body).fontFamily}`; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText(title, CH.padL, top + 12);
+    ctx.font = `500 11px ${getComputedStyle(document.body).fontFamily}`;
+    for (const v of dom.ticks) {
+      const yy = Math.round(y(v)) + 0.5;
+      ctx.strokeStyle = tok('--grid'); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(CH.padL, yy); ctx.lineTo(W - CH.padR, yy); ctx.stroke();
+      ctx.fillStyle = tok('--muted'); ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillText(fmt(v), CH.padL - 6, yy);
+    }
+    geo.panels.push({ y, y0, y1 });
+    return y;
+  };
+  // Velocità
+  const sp = fr.map(f => (f.ms == null ? NaN : f.ms * SPEED.f));
+  const spMax = Math.max(1, ...sp.filter(isFinite));
+  const domS = niceDomain(0, spMax, 3, true);
+  const yS = panel(0, `Velocità SOG · ${SPEED.label}`, domS, v => fmtAxis(v, domS.step));
+  drawLine(ctx, fr.map(f => f.ts), sp, x, yS, 10000, tok('--accent'), t0, t1);
+  // Carico
+  let yL = null;
+  if (hasLoad) {
+    const off = A.offset * 1000;
+    let lo = Infinity, hi = -Infinity;
+    sens.forEach(s => { for (let i = 0; i < s.t.length; i++) { const t = s.t[i] + off; if (t >= t0 && t <= t1) { lo = Math.min(lo, s.v[i]); hi = Math.max(hi, s.v[i]); } } });
+    const unit = sens[0].unit;
+    const domL = niceDomain(lo, hi, 3, false);
+    yL = panel(1, `Carico · ${unit}`, domL, v => fmtAxis(v, domL.step));
+    if (!isFinite(lo)) { ctx.fillStyle = tok('--muted'); ctx.textAlign = 'center'; ctx.fillText('Nessun campione di carico in questo intervallo', (CH.padL + W - CH.padR) / 2, (geo.panels[1].y0 + geo.panels[1].y1) / 2); }
+    sens.forEach((s, j) => { const T = Float64Array.from(s.t, t => t + off); drawLine(ctx, T, s.v, x, yL, s.gap, SERIES[j], t0, t1); });
+  }
+  // Asse del tempo
+  const span = t1 - t0, steps = [5e3, 1e4, 15e3, 3e4, 6e4, 12e4, 3e5, 6e5, 9e5, 18e5, 36e5, 72e5];
+  const st = steps.find(s => span / s <= Math.max(3, Math.floor((W - CH.padL) / 90))) || 72e5;
+  ctx.fillStyle = tok('--muted'); ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  const yAx = H - 6;
+  for (let t = Math.ceil(t0 / st) * st; t <= t1; t += st) {
+    const xx = Math.round(x(t)) + 0.5, d = new Date(t);
+    ctx.strokeStyle = tok('--line'); ctx.beginPath(); ctx.moveTo(xx, H - CH.axis); ctx.lineTo(xx, H - CH.axis + 4); ctx.stroke();
+    ctx.fillText(st < 6e4 ? hms(d) : hm(d), Math.max(CH.padL + 20, Math.min(W - 26, xx)), yAx);
+  }
+  // Cursore della foto selezionata
+  const f = fr[A.i], cx = Math.round(x(f.ts)) + 0.5;
+  ctx.strokeStyle = tok('--fg'); ctx.globalAlpha = 0.55; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(cx, CH.top); ctx.lineTo(cx, H - CH.axis); ctx.stroke(); ctx.globalAlpha = 1;
+  const dot = (yy, col) => { if (!isFinite(yy)) return; ctx.beginPath(); ctx.arc(cx, yy, 4.5, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = tok('--surface'); ctx.stroke(); };
+  if (isFinite(sp[A.i])) dot(yS(sp[A.i]), tok('--accent'));
+  if (yL) sens.forEach((s, j) => { const v = A.values[j] && A.values[j][A.i]; if (isFinite(v)) dot(yL(v), SERIES[j]); });
+  chartGeo = geo;
+  // Legenda
+  const lg = $('#chartLegend'); lg.textContent = '';
+  if (sens.length > 1) sens.forEach((s, j) => { const sp2 = document.createElement('span'); const sw = document.createElement('i'); sw.className = 'sw'; sw.style.background = SERIES[j]; sp2.append(sw, document.createTextNode(s.name)); lg.append(sp2); });
+  else if (!hasLoad) { const sp2 = document.createElement('span'); sp2.style.color = tok('--muted'); sp2.textContent = 'Importa il CSV Cyclops per vedere anche il carico.'; lg.append(sp2); }
+}
+function frameAtX(px) {
+  if (!chartGeo || !A.cur) return -1;
+  const { t0, t1, W } = chartGeo;
+  const t = t0 + (px - CH.padL) / (W - CH.padL - CH.padR) * (t1 - t0);
+  const fr = A.cur.frames;
+  let lo = 0, hi = fr.length - 1;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (fr[m].ts < t) lo = m + 1; else hi = m; }
+  if (lo > 0 && Math.abs(fr[lo - 1].ts - t) < Math.abs(fr[lo].ts - t)) lo--;
+  return lo;
+}
+function showTip(k, px) {
+  const tip = $('#tip'), f = A.cur.frames[k];
+  const parts = [`<b>${hms(new Date(f.ts))}</b>`, `${fmtSpeed(f.ms)} ${SPEED.label}`];
+  activeSensors().forEach((s, j) => parts.push(`${escapeHtml(s.name)} ${fmtLoad(A.values[j][k], s.dec)} ${escapeHtml(s.unit)}`));
+  tip.innerHTML = parts.join(' · ');
+  tip.hidden = false;
+  const W = $('#chart').clientWidth, tw = tip.offsetWidth;
+  tip.style.left = `${Math.max(0, Math.min(W - tw, px - tw / 2))}px`;
+}
+const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+/* ---------- Foto e letture ---------- */
+function renderReadouts() {
+  const box = $('#readouts');
+  if (!A.cur) { box.textContent = ''; return; }
+  const f = A.cur.frames[A.i];
+  const items = [
+    ['Ora', hms(new Date(f.ts)), ''],
+    ['Velocità SOG', fmtSpeed(f.ms), SPEED.label],
+    ['Rotta COG', f.cog == null ? '—' : String(Math.round(f.cog) % 360).padStart(3, '0') + '°', '']
+  ];
+  activeSensors().forEach((s, j) => items.push([s.name, fmtLoad(A.values[j] ? A.values[j][A.i] : NaN, s.dec), s.unit, SERIES[j]]));
+  box.textContent = '';
+  for (const [k, v, u, col] of items) {
+    const d = document.createElement('div'); d.className = 'ro';
+    const kk = document.createElement('div'); kk.className = 'k';
+    if (col) { const sw = document.createElement('i'); sw.className = 'sw'; sw.style.background = col; kk.append(sw); }
+    kk.append(document.createTextNode(k));
+    const vv = document.createElement('div'); vv.className = 'v'; vv.textContent = v;
+    if (u && v !== '—') { const sm = document.createElement('small'); sm.textContent = u; vv.append(sm); }
+    d.append(kk, vv); box.append(d);
+  }
+}
+async function showPhoto() {
+  const f = A.cur.frames[A.i], token = ++A.photoToken;
+  const img = $('#photo');
+  $('#photoBox').style.aspectRatio = f.w && f.h ? `${f.w}/${f.h}` : '16/9';
+  try {
+    const blob = await f.getBlob();
+    if (token !== A.photoToken) return;
+    const url = URL.createObjectURL(blob);
+    img.onload = () => { $('#photoPh').hidden = true; if (!f.w) $('#photoBox').style.aspectRatio = `${img.naturalWidth}/${img.naturalHeight}`; };
+    img.src = url;
+    if (A.photoUrl) URL.revokeObjectURL(A.photoUrl);
+    A.photoUrl = url;
+  } catch (e) { $('#photoPh').hidden = false; $('#photoPh').textContent = 'Foto non leggibile: ' + errMsg(e); }
+}
+function select(k, o = {}) {
+  if (!A.cur) return;
+  A.i = Math.max(0, Math.min(A.cur.frames.length - 1, k));
+  $('#scrub').value = A.i;
+  $('#pos').textContent = `${A.i + 1} / ${A.cur.frames.length}`;
+  renderReadouts(); showPhoto(); placeMarker(o.pan !== false); drawChart();
+}
+function setPlaying(on) {
+  A.playing = on; $('#play').textContent = on ? '❚❚' : '▶'; $('#play').setAttribute('aria-label', on ? 'Pausa' : 'Riproduci');
+  clearTimeout(A.playTimer);
+  if (on) step();
+}
+function step() {
+  if (!A.playing) return;
+  const fr = A.cur.frames;
+  if (A.i >= fr.length - 1) { setPlaying(false); return; }
+  const dt = (fr[A.i + 1].ts - fr[A.i].ts) / Number($('#speedSel').value);
+  select(A.i + 1);
+  A.playTimer = setTimeout(step, Math.max(60, Math.min(2000, dt)));
+}
+
+/* ---------- Timbro del carico sulla foto ---------- */
+const xcv = document.createElement('canvas'), xcx = xcv.getContext('2d', { willReadFrequently: true });
+async function decode(blob) {
+  if (window.createImageBitmap) { try { return await createImageBitmap(blob); } catch (e) {} }
+  const url = URL.createObjectURL(blob);
+  try { const im = new Image(); im.src = url; await im.decode(); return im; } finally { setTimeout(() => URL.revokeObjectURL(url), 1000); }
+}
+function detectBand(c, w, h) {
+  const top = Math.floor(h * 0.6), col = c.getImageData(Math.floor(w * 0.5), top, 1, h - top).data;
+  const amber = i => col[i] > 200 && col[i + 1] > 125 && col[i + 1] < 215 && col[i + 2] < 95;
+  for (let y = h - top - 1; y >= 0; y--) {
+    if (amber(y * 4)) { let t = y; while (t > 0 && amber((t - 1) * 4)) t--; if (y - t >= 1) return { y: top + t, h: h - top - t }; }
+  }
+  return null;
+}
+function drawLoadStamp(c, w, h, band, f, items) {
+  const s = Math.min(w, h) / 1080, pad = Math.round(32 * s), y0 = band.y;
+  const big = Math.round(92 * s), small = Math.round(31 * s);
+  const yBig = y0 + Math.round(104 * s), ySmall = y0 + Math.round(142 * s);
+  const u = UNITS[f.unit] || SPEED;
+  c.save();
+  c.font = `700 ${big}px ${FONT}`; const timeW = c.measureText(hms(new Date(f.ts))).width;
+  const spW = c.measureText(f.ms == null ? '—' : fmtNum(f.ms * u.f, u.dec)).width;
+  c.font = `600 ${Math.round(46 * s)}px ${FONT}`; const unitW = c.measureText(u.label).width;
+  c.font = `600 ${small}px ${FONT}`;
+  const leftSmall = c.measureText(`${dmy(new Date(f.ts))}   #${p4(f.n)}`).width, rightSmall = c.measureText(stampNote(f)).width;
+  const L = pad + timeW + 44 * s, R = w - pad - spW - unitW - 12 * s - 44 * s;
+  const Ls = pad + leftSmall + 30 * s, Rs = w - pad - rightSmall - 30 * s;
+  const cell = (R - L) / items.length, cellS = (Rs - Ls) / items.length;
+  c.textBaseline = 'alphabetic'; c.textAlign = 'center';
+  items.forEach((it, k) => {
+    const cx = L + cell * (k + 0.5), cxs = Ls + cellS * (k + 0.5);
+    const val = fmtLoad(it.v, it.dec), unit = ' ' + it.unit;
+    let px = big;
+    for (; px > 30 * s; px -= 2) {
+      c.font = `700 ${px}px ${FONT}`; const vw = c.measureText(val).width;
+      c.font = `600 ${Math.round(px * 0.5)}px ${FONT}`; const uw = c.measureText(unit).width;
+      if (vw + uw <= cell * 0.94) break;
+    }
+    c.font = `700 ${px}px ${FONT}`; const vw = c.measureText(val).width;
+    c.font = `600 ${Math.round(px * 0.5)}px ${FONT}`; const uw = c.measureText(unit).width;
+    const x0 = cx - (vw + uw) / 2;
+    c.textAlign = 'left';
+    c.fillStyle = isFinite(it.v) ? STAMP.load : STAMP.soft; c.font = `700 ${px}px ${FONT}`; c.fillText(val, x0, yBig);
+    c.fillStyle = STAMP.ink; c.font = `600 ${Math.round(px * 0.5)}px ${FONT}`; c.fillText(unit, x0 + vw, yBig);
+    if (cellS > 40 * s) {
+      c.textAlign = 'center'; c.fillStyle = STAMP.soft;
+      let sz = small, name = it.name;
+      c.font = `600 ${sz}px ${FONT}`;
+      while (c.measureText(name).width > cellS * 0.94 && name.length > 3) name = name.slice(0, -2).trimEnd() + '…';
+      c.fillText(name, Math.max(Ls + cellS * k + c.measureText(name).width / 2, cxs), ySmall);
+    }
+  });
+  c.restore();
+}
+async function stampedBlob(k) {
+  const f = A.cur.frames[k];
+  const blob = await f.getBlob();
+  const sens = activeSensors();
+  if (!sens.length) return { blob, f };
+  const bmp = await decode(blob);
+  const w = bmp.width, h = bmp.height;
+  xcv.width = w; xcv.height = h;
+  xcx.drawImage(bmp, 0, 0);
+  if (bmp.close) bmp.close();
+  const band = f.band || detectBand(xcx, w, h) || { y: h - Math.round(156 * Math.min(w, h) / 1080), h: Math.round(156 * Math.min(w, h) / 1080) };
+  const items = sens.map((s, j) => ({ name: s.name, unit: s.unit, dec: s.dec, v: A.values[j][k] }));
+  drawLoadStamp(xcx, w, h, band, f, items);
+  const raw = await new Promise((res, rej) => xcv.toBlob(b => (b ? res(b) : rej(new Error('Codifica JPEG non riuscita'))), 'image/jpeg', 0.9));
+  let desc = `${hms(new Date(f.ts))} ${dmy(new Date(f.ts))} #${p4(f.n)}`;
+  if (f.ms != null) desc += ` SOG ${(f.ms * 1.9438445).toFixed(1)} kn`;
+  items.forEach(it => { if (isFinite(it.v)) desc += ` ${it.name} ${it.v.toFixed(it.dec)} ${it.unit}`; });
+  const bytes = await EXIF.insert(raw, { ...f, w, h, desc });
+  return { blob: new Blob([bytes], { type: 'image/jpeg' }), bytes, f };
+}
+
+/* ---------- EXIF: ora e posizione GPS dentro il JPEG ---------- */
+const EXIF = (() => {
+  const le32 = v => [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255];
+  const txt = s => { const a = []; for (const ch of String(s)) { const c = ch.charCodeAt(0); a.push(c > 31 && c < 127 ? c : 63); } return a; };
+  const asc = s => { const b = [...txt(s), 0]; return { type: 2, count: b.length, bytes: b }; };
+  const byt = a => ({ type: 1, count: a.length, bytes: a });
+  const und = s => ({ type: 7, count: s.length, bytes: txt(s) });
+  const sh = v => ({ type: 3, count: 1, bytes: [v & 255, (v >> 8) & 255] });
+  const lg = v => ({ type: 4, count: 1, bytes: le32(v >>> 0) });
+  const rat = pairs => ({ type: 5, count: pairs.length, bytes: pairs.flatMap(([n, d]) => [...le32(Math.max(0, Math.round(n)) >>> 0), ...le32(d)]) });
+  function dms(v) {
+    v = Math.abs(v);
+    const d = Math.floor(v), mf = (v - d) * 60, m = Math.floor(mf);
+    return [[d, 1], [m, 1], [Math.min(59999, Math.round((mf - m) * 60000)), 1000]];
+  }
+  const size = es => es.reduce((a, [, v]) => a + (v.bytes.length > 4 ? v.bytes.length + (v.bytes.length & 1) : 0), 2 + es.length * 12 + 4);
+  function write(out, start, es) {
+    es.sort((a, b) => a[0] - b[0]);
+    const dv = new DataView(out.buffer);
+    dv.setUint16(start, es.length, true);
+    let p = start + 2, data = start + 2 + es.length * 12 + 4;
+    for (const [tag, v] of es) {
+      dv.setUint16(p, tag, true); dv.setUint16(p + 2, v.type, true); dv.setUint32(p + 4, v.count, true);
+      if (v.bytes.length <= 4) out.set(v.bytes, p + 8);
+      else { dv.setUint32(p + 8, data, true); out.set(v.bytes, data); data += v.bytes.length + (v.bytes.length & 1); }
+      p += 12;
+    }
+    dv.setUint32(p, 0, true);
+  }
+  function build(r) {
+    const d = new Date(r.ts), q = n => String(n).padStart(2, '0');
+    const local = `${d.getFullYear()}:${q(d.getMonth() + 1)}:${q(d.getDate())} ${q(d.getHours())}:${q(d.getMinutes())}:${q(d.getSeconds())}`;
+    const o = -d.getTimezoneOffset(), off = `${o >= 0 ? '+' : '-'}${q(Math.floor(Math.abs(o) / 60))}:${q(Math.abs(o) % 60)}`;
+    const ifd0 = [[0x010E, asc(r.desc || '')], [0x0112, sh(1)], [0x0131, asc('Cronoscatto')], [0x0132, asc(local)], [0x8769, lg(0)]];
+    const exif = [[0x9000, und('0232')], [0x9003, asc(local)], [0x9004, asc(local)], [0x9010, asc(off)], [0x9011, asc(off)],
+      [0x9291, asc(String(d.getMilliseconds()).padStart(3, '0'))], [0xA002, lg(r.w || 0)], [0xA003, lg(r.h || 0)]];
+    let gps = null;
+    if (r.lat != null && r.lon != null && isFinite(r.lat) && isFinite(r.lon)) {
+      gps = [[0x0000, byt([2, 3, 0, 0])], [0x0001, asc(r.lat >= 0 ? 'N' : 'S')], [0x0002, rat(dms(r.lat))],
+        [0x0003, asc(r.lon >= 0 ? 'E' : 'W')], [0x0004, rat(dms(r.lon))],
+        [0x0007, rat([[d.getUTCHours(), 1], [d.getUTCMinutes(), 1], [d.getUTCSeconds() * 1000 + d.getUTCMilliseconds(), 1000]])],
+        [0x001D, asc(`${d.getUTCFullYear()}:${q(d.getUTCMonth() + 1)}:${q(d.getUTCDate())}`)]];
+      if (r.ms != null && isFinite(r.ms)) gps.push([0x000C, asc('N')], [0x000D, rat([[r.ms * 194.38445, 100]])]);
+      if (r.cog != null && isFinite(r.cog)) gps.push([0x000E, asc('T')], [0x000F, rat([[Math.round(r.cog * 100) % 36000, 100]])]);
+      if (r.acc != null && isFinite(r.acc)) gps.push([0x001F, rat([[r.acc * 10, 10]])]);
+      ifd0.push([0x8825, lg(0)]);
+    }
+    const o0 = 8, o1 = o0 + size(ifd0), o2 = o1 + size(exif);
+    ifd0.find(e => e[0] === 0x8769)[1] = lg(o1);
+    if (gps) ifd0.find(e => e[0] === 0x8825)[1] = lg(o2);
+    const tiff = new Uint8Array(o2 + (gps ? size(gps) : 0));
+    tiff.set([0x49, 0x49, 0x2A, 0, 8, 0, 0, 0], 0);
+    write(tiff, o0, ifd0); write(tiff, o1, exif); if (gps) write(tiff, o2, gps);
+    return tiff;
+  }
+  async function insert(blob, r) {
+    const src = new Uint8Array(await blob.arrayBuffer());
+    if (src[0] !== 0xFF || src[1] !== 0xD8) return src;
+    let p = 2;
+    while (p + 4 < src.length && src[p] === 0xFF && (src[p + 1] === 0xE0 || src[p + 1] === 0xE1)) p += 2 + ((src[p + 2] << 8) | src[p + 3]);
+    const tiff = build(r), len = 8 + tiff.length;
+    const out = new Uint8Array(12 + tiff.length + src.length - p);
+    out.set([0xFF, 0xD8, 0xFF, 0xE1, len >> 8, len & 255, 0x45, 0x78, 0x69, 0x66, 0, 0], 0);
+    out.set(tiff, 12);
+    out.set(src.subarray(p), 12 + tiff.length);
+    return out;
+  }
+  return { insert };
+})();
+
+/* ---------- ZIP in uscita (senza compressione) ---------- */
+const CRC_T = (() => { const t = new Uint32Array(256); for (let i = 0; i < 256; i++) { let c = i; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[i] = c >>> 0; } return t; })();
+function crc32(u8) { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC_T[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function zipStore(entries) {
+  const enc = new TextEncoder(), parts = [], cd = [];
+  let off = 0;
+  for (const e of entries) {
+    const name = enc.encode(e.name), d = e.date, size = e.blob.size;
+    const time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+    const date = ((Math.max(1980, d.getFullYear()) - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+    lh.setUint16(10, time, true); lh.setUint16(12, date, true); lh.setUint32(14, e.crc, true);
+    lh.setUint32(18, size, true); lh.setUint32(22, size, true); lh.setUint16(26, name.length, true);
+    parts.push(lh.buffer, name, e.blob);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+    ch.setUint16(12, time, true); ch.setUint16(14, date, true); ch.setUint32(16, e.crc, true);
+    ch.setUint32(20, size, true); ch.setUint32(24, size, true); ch.setUint16(28, name.length, true); ch.setUint32(42, off, true);
+    cd.push(ch.buffer, name);
+    off += 30 + name.length + size;
+  }
+  const cdSize = cd.reduce((a, p) => a + p.byteLength, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, entries.length, true); end.setUint16(10, entries.length, true);
+  end.setUint32(12, cdSize, true); end.setUint32(16, off, true);
+  return new Blob([...parts, ...cd, end.buffer], { type: 'application/zip' });
+}
+
+/* ---------- Esportazioni ---------- */
+function saveBlob(blob, name) {
+  const url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url; a.download = name; a.rel = 'noopener';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 180000);
+}
+const safe = s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '').toLowerCase() || 'sensore';
+function mergedCSV() {
+  const fr = A.cur.frames, all = A.cyc ? A.cyc.sensors : [], off = A.offset * 1000;
+  const vals = all.map(s => fr.map(f => interp(s, f.ts - off)));
+  const head = ['file', 'frame', 'data_ora_iso', 'ora', 'lat', 'lon', 'accuratezza_m', 'sog_ms', 'sog_kn', 'sog_kmh', 'cog_deg', ...all.map(s => `carico_${safe(s.name)}_${safe(s.unit)}`)];
+  if (all.length) head.push('allineamento_carico_s');
+  const fx = (v, d) => (v == null || !isFinite(v) ? '' : v.toFixed(d));
+  const rows = fr.map((f, k) => {
+    const r = [f.file, f.n, isoLocal(f.ts), hms(new Date(f.ts)), fx(f.lat, 7), fx(f.lon, 7), fx(f.acc, 1), fx(f.ms, 3), f.ms == null ? '' : (f.ms * 1.9438445).toFixed(2), f.ms == null ? '' : (f.ms * 3.6).toFixed(2), fx(f.cog, 1)];
+    vals.forEach(v => r.push(fx(v[k], 2)));
+    if (all.length) r.push(A.offset);
+    return r.join(',');
+  });
+  return new Blob(['﻿' + [head.join(','), ...rows].join('\r\n') + '\r\n'], { type: 'text/csv' });
+}
+function baseName() { return `cronoscatto_${ymdhms(A.cur.frames[0].ts)}`; }
+function rangeSel() {
+  const N = A.cur.frames.length;
+  let a = Math.max(1, Math.min(N, Number($('#xFrom').value) || 1)), b = Math.max(1, Math.min(N, Number($('#xTo').value) || N));
+  if (b < a) [a, b] = [b, a];
+  const st = Number($('#xStep').value) || 1, idx = [];
+  for (let k = a - 1; k <= b - 1; k += st) idx.push(k);
+  return idx;
+}
+function updateExportEst() {
+  if (!A.cur) return;
+  const idx = rangeSel(), fr = A.cur.frames;
+  const avg = fr.reduce((s, f) => s + (f.size || 300000), 0) / fr.length;
+  const est = avg * idx.length * 1.05;
+  const phone = /iPhone|iPad|Android/i.test(navigator.userAgent);
+  let msg = `${idx.length} foto, circa ${fmtBytes(est)}.`;
+  if (!activeSensors().length) msg += ' Senza CSV Cyclops le foto escono come sono, con la posizione GPS nell\'EXIF.';
+  if (phone && est > 400e6) msg += ' Sul telefono conviene restare sotto i 400 MB: riduci l\'intervallo o scegli 1 foto ogni 2 o 5.';
+  $('#xEst').textContent = msg;
+}
+async function exportZip() {
+  const idx = rangeSel();
+  if (!idx.length) return;
+  const job = { cancel: false };
+  A.exporting = job;
+  $('#xProg').hidden = false; $('#xZip').disabled = true; $('#xDone').textContent = '';
+  const bar = $('#xBar'), msg = $('#xMsg');
+  bar.max = idx.length; bar.value = 0;
+  const entries = [], folder = baseName() + '_carico/';
+  try {
+    await (document.fonts && document.fonts.load ? document.fonts.load(`700 40px ${FONT}`).catch(() => {}) : null);
+    for (let n = 0; n < idx.length; n++) {
+      if (job.cancel) throw new Error('annullato');
+      const k = idx[n], r = await stampedBlob(k);
+      const bytes = r.bytes || new Uint8Array(await r.blob.arrayBuffer());
+      entries.push({ name: folder + r.f.file, blob: new Blob([bytes], { type: 'image/jpeg' }), crc: crc32(bytes), date: new Date(r.f.ts) });
+      bar.value = n + 1; msg.textContent = `Foto ${n + 1} di ${idx.length}`;
+      if (n % 4 === 3) await new Promise(r2 => setTimeout(r2, 0));
+    }
+    const csv = mergedCSV(), cb = new Uint8Array(await csv.arrayBuffer());
+    entries.push({ name: folder + 'dati_carico.csv', blob: csv, crc: crc32(cb), date: new Date() });
+    const zip = zipStore(entries), name = `${baseName()}_carico.zip`;
+    const done = $('#xDone'); done.textContent = '';
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'btn primary'; b.textContent = `Scarica ZIP · ${fmtBytes(zip.size)}`;
+    b.addEventListener('click', () => saveBlob(zip, name));
+    done.append(b);
+    if (canShare(zip, name, 'application/zip')) {
+      const s = document.createElement('button'); s.type = 'button'; s.className = 'btn'; s.textContent = 'Condividi ZIP';
+      s.addEventListener('click', () => share(new File([zip], name, { type: 'application/zip' })));
+      done.append(s);
+    }
+    msg.textContent = 'ZIP pronto.';
+  } catch (e) {
+    msg.textContent = e.message === 'annullato' ? 'Esportazione annullata.' : 'Esportazione non riuscita: ' + errMsg(e);
+  } finally {
+    A.exporting = null; $('#xZip').disabled = false;
+    setTimeout(() => { if (!A.exporting) $('#xProg').hidden = !/annullat|non riuscita/.test(msg.textContent) && true; }, 1500);
+  }
+}
+function canShare(blob, name, type) { try { return !!(navigator.canShare && navigator.canShare({ files: [new File([blob], name, { type })] })); } catch (e) { return false; } }
+async function share(file) { try { await navigator.share({ files: [file], title: file.name }); } catch (e) { if (e.name !== 'AbortError') toast('Condivisione non riuscita: ' + errMsg(e)); } }
+
+/* ---------- Sessioni ---------- */
+function renderSessionSel() {
+  const sel = $('#sessionSel'); sel.textContent = '';
+  for (const s of A.sessions) { const o = document.createElement('option'); o.value = s.key; o.textContent = s.label; sel.append(o); }
+  if (A.cur) sel.value = A.cur.key;
+  sel.hidden = !A.sessions.length;
+}
+async function openSession(key) {
+  const s = A.sessions.find(x => x.key === key);
+  if (!s) return;
+  setPlaying(false);
+  if (s.kind === 'idb' && !s.frames) s.frames = await loadIdbFrames(s.id);
+  if (!s.frames.length) { toast('Questa sessione è vuota.'); return; }
+  A.cur = s; A.i = 0; A.cyc = null; A.values = []; A.offset = 0; A.metric = 'sog';
+  $('#empty').hidden = true; $('#main').hidden = false;
+  $('#demoBanner').hidden = s.kind !== 'demo';
+  $('#scrub').max = s.frames.length - 1;
+  $('#xFrom').value = 1; $('#xTo').value = s.frames.length; $('#xFrom').max = $('#xTo').max = s.frames.length;
+  $('#xDone').textContent = ''; $('#xProg').hidden = true;
+  renderSessionSel();
+  if (map) map.invalidateSize();
+  renderCycForm();
+  if (s.kind === 'demo') { await importCyclops(s.cycName, s.cycText, null); applyGpsAlign(true); }
+  else { const saved = await cycLoad(s.key); if (saved && saved.text) { try { await importCyclops(saved.name, saved.text, saved); } catch (e) { toast('Il CSV Cyclops salvato non si legge più: importalo di nuovo.'); } } }
+  renderMetricOptions(); drawTrack(true); select(0, { pan: false }); updateExportEst();
+  try { history.replaceState(null, '', s.kind === 'idb' ? `?s=${s.id}` : location.pathname); } catch (e) {}
+}
+async function boot() {
+  initMap();
+  let list = [];
+  try { list = await listIdbSessions(); } catch (e) { toast('Archivio del telefono non disponibile: ' + errMsg(e)); }
+  A.sessions = list.map(x => { const d = new Date(x.id); return { key: 'idb:' + x.id, id: x.id, kind: 'idb', label: `${dmy(d)} ${hm(d)} · ${x.count} foto` }; });
+  renderSessionSel();
+  const want = new URLSearchParams(location.search).get('s');
+  const first = (want && A.sessions.find(s => String(s.id) === want)) || A.sessions[0];
+  if (first) await openSession(first.key);
+  else { $('#empty').hidden = false; $('#main').hidden = true; }
+}
+
+/* ---------- Eventi ---------- */
+function pickZip() { $('#zipInput').click(); }
+$('#zipBtn').addEventListener('click', pickZip);
+$('#emptyZip').addEventListener('click', pickZip);
+$('#zipInput').addEventListener('change', async e => {
+  const file = e.target.files[0]; e.target.value = '';
+  if (!file) return;
+  try { const s = await addZip(file); await openSession(s.key); toast(`Aperto ${file.name}.`); }
+  catch (err) { toast('ZIP non aperto: ' + errMsg(err), 8000); }
+});
+$('#emptyDemo').addEventListener('click', async () => {
+  const d = makeDemo();
+  A.sessions = A.sessions.filter(s => s.kind !== 'demo'); A.sessions.push(d);
+  await openSession(d.key);
+});
+$('#demoClose').addEventListener('click', () => {
+  A.sessions = A.sessions.filter(s => s.kind !== 'demo'); A.cur = null; setPlaying(false);
+  renderSessionSel();
+  if (A.sessions.length) openSession(A.sessions[0].key); else { $('#main').hidden = true; $('#demoBanner').hidden = true; $('#empty').hidden = false; }
+});
+$('#sessionSel').addEventListener('change', e => openSession(e.target.value));
+$('#cycBtn').addEventListener('click', () => $('#cycInput').click());
+$('#cycInput').addEventListener('change', async e => {
+  const file = e.target.files[0]; e.target.value = '';
+  if (!file || !A.cur) return;
+  try {
+    const text = await file.text();
+    await importCyclops(file.name, text, null);
+    if (A.cyc.error) toast(A.cyc.error, 8000);
+    else {
+      if (A.cyc.gps) applyGpsAlign(true);
+      if (cycKey()) cycSave({ session: cycKey(), name: A.cyc.name, text: A.cyc.text, map: A.cyc.map, offset: A.offset });
+    }
+  } catch (err) { toast('CSV non letto: ' + errMsg(err), 8000); }
+});
+$('#cycRemove').addEventListener('click', () => {
+  if (cycKey()) cycDelete(cycKey());
+  A.cyc = null; A.values = []; A.offset = 0; renderCycForm(); syncValues();
+});
+$('#mTime').addEventListener('change', e => { A.cyc.map.timeCol = Number(e.target.value); rebuildCyc(); });
+$('#mTz').addEventListener('change', e => { A.cyc.map.tz = e.target.value; rebuildCyc(); });
+$('#mSensor').addEventListener('change', e => { A.cyc.map.sensorCol = Number(e.target.value); if (A.cyc.map.sensorCol >= 0) A.cyc.map.values = A.cyc.map.values.slice(0, 1); renderCycForm(); rebuildCyc(); });
+$('#mUnit').addEventListener('change', e => { A.cyc.map.unit = e.target.value.trim() || 'kg'; rebuildCyc(); });
+document.querySelectorAll('[data-off]').forEach(b => b.addEventListener('click', () => {
+  A.offset = Math.round((A.offset + Number(b.dataset.off)) * 10) / 10; $('#offset').value = A.offset; syncValues(); persistSoon();
+}));
+$('#offset').addEventListener('change', e => { A.offset = Number(e.target.value) || 0; syncValues(); persistSoon(); });
+$('#gpsAlign').addEventListener('click', () => applyGpsAlign(false));
+$('#metric').addEventListener('change', e => { A.metric = e.target.value; drawTrack(); });
+$('#scrub').addEventListener('input', e => select(Number(e.target.value)));
+$('#prev').addEventListener('click', () => select(A.i - 1));
+$('#next').addEventListener('click', () => select(A.i + 1));
+$('#play').addEventListener('click', () => setPlaying(!A.playing));
+document.addEventListener('keydown', e => {
+  if (!A.cur || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  if (e.key === 'ArrowRight') { select(A.i + 1); e.preventDefault(); }
+  else if (e.key === 'ArrowLeft') { select(A.i - 1); e.preventDefault(); }
+  else if (e.key === ' ') { setPlaying(!A.playing); e.preventDefault(); }
+});
+const chart = $('#chart');
+let dragging = false;
+chart.addEventListener('pointerdown', e => { dragging = true; chart.setPointerCapture(e.pointerId); const k = frameAtX(e.offsetX); if (k >= 0) { select(k); showTip(k, e.offsetX); } });
+chart.addEventListener('pointermove', e => { const k = frameAtX(e.offsetX); if (k < 0) return; if (dragging) select(k); showTip(k, e.offsetX); });
+chart.addEventListener('pointerup', () => { dragging = false; });
+chart.addEventListener('pointercancel', () => { dragging = false; $('#tip').hidden = true; });
+chart.addEventListener('pointerleave', () => { if (!dragging) $('#tip').hidden = true; });
+let rz = 0;
+window.addEventListener('resize', () => { cancelAnimationFrame(rz); rz = requestAnimationFrame(() => { drawChart(); if (map) map.invalidateSize(); }); });
+$('#xCsv').addEventListener('click', () => { if (A.cur) saveBlob(mergedCSV(), `${baseName()}_unito.csv`); });
+$('#xOne').addEventListener('click', async () => {
+  if (!A.cur) return;
+  try {
+    const r = await stampedBlob(A.i), name = r.f.file.replace(/\.jpe?g$/i, '') + '_carico.jpg';
+    if (canShare(r.blob, name, 'image/jpeg')) await share(new File([r.blob], name, { type: 'image/jpeg' }));
+    else saveBlob(r.blob, name);
+  } catch (e) { toast('Foto non esportata: ' + errMsg(e)); }
+});
+$('#xSetFrom').addEventListener('click', () => { $('#xFrom').value = A.i + 1; updateExportEst(); });
+$('#xSetTo').addEventListener('click', () => { $('#xTo').value = A.i + 1; updateExportEst(); });
+['#xFrom', '#xTo', '#xStep'].forEach(s => $(s).addEventListener('change', updateExportEst));
+$('#xZip').addEventListener('click', exportZip);
+$('#xCancel').addEventListener('click', () => { if (A.exporting) A.exporting.cancel = true; else $('#xProg').hidden = true; });
+
+if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('sw.js').catch(() => {});
+boot().catch(e => toast('Avvio non riuscito: ' + errMsg(e), 9000));
+window.__cronoscatto = A;
+})();
+</script>
+</body>
+</html>

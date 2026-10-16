@@ -142,6 +142,8 @@ select:disabled{opacity:.45}
 .btn.danger{color:var(--bad)}
 .btn.danger.armed{background:var(--bad);border-color:var(--bad);color:var(--bg)}
 .btn:disabled{opacity:.45;cursor:not-allowed}
+a.btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
+.btn.map{flex-basis:100%;border-color:var(--accent);color:var(--accent);background:transparent}
 .btn.big{font-size:16px;padding:15px 22px;min-height:52px;border-radius:14px}
 
 .sessions{display:grid;gap:10px;padding-block:12px}
@@ -252,7 +254,7 @@ select:disabled{opacity:.45}
   <div class="sheet-head"><h2 id="rollTitle">Rullino</h2><button class="btn ghost" type="button" data-close>Chiudi</button></div>
   <p class="hint" id="rollSummary"></p>
   <div class="sessions" id="sessions"></div>
-  <p class="hint">Le foto restano in questo browser finché non le elimini. Ogni ZIP contiene le foto della sessione e un file dati.csv con ora, posizione e velocità di ogni scatto. Scarica a fine uscita: alcuni browser cancellano i dati dei siti non usati da giorni.</p>
+  <p class="hint">Le foto restano in questo browser finché non le elimini. Ogni foto contiene ora e posizione GPS (EXIF), quindi compare sulla mappa di Foto, Google Foto o Lightroom. Ogni ZIP contiene le foto della sessione e un file dati.csv con ora, posizione e velocità di ogni scatto. Scarica a fine uscita: alcuni browser cancellano i dati dei siti non usati da giorni.</p>
 </section>
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
@@ -502,6 +504,84 @@ function drawStamp(c, w, h, r, info) {
     c.fillText(line, pad, yExtra);
   }
   c.restore();
+  return { y: y0, h: barH };
+}
+
+/* ---------- EXIF: ora e posizione GPS dentro il JPEG ---------- */
+const EXIF = (() => {
+  const le32 = v => [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255];
+  const txt = s => { const a = []; for (const ch of String(s)) { const c = ch.charCodeAt(0); a.push(c > 31 && c < 127 ? c : 63); } return a; };
+  const asc = s => { const b = [...txt(s), 0]; return { type: 2, count: b.length, bytes: b }; };
+  const byt = a => ({ type: 1, count: a.length, bytes: a });
+  const und = s => ({ type: 7, count: s.length, bytes: txt(s) });
+  const sh = v => ({ type: 3, count: 1, bytes: [v & 255, (v >> 8) & 255] });
+  const lg = v => ({ type: 4, count: 1, bytes: le32(v >>> 0) });
+  const rat = pairs => ({ type: 5, count: pairs.length, bytes: pairs.flatMap(([n, d]) => [...le32(Math.max(0, Math.round(n)) >>> 0), ...le32(d)]) });
+  function dms(v) {
+    v = Math.abs(v);
+    const d = Math.floor(v), mf = (v - d) * 60, m = Math.floor(mf);
+    return [[d, 1], [m, 1], [Math.min(59999, Math.round((mf - m) * 60000)), 1000]];
+  }
+  const size = es => es.reduce((a, [, v]) => a + (v.bytes.length > 4 ? v.bytes.length + (v.bytes.length & 1) : 0), 2 + es.length * 12 + 4);
+  function write(out, start, es) {
+    es.sort((a, b) => a[0] - b[0]);
+    const dv = new DataView(out.buffer);
+    dv.setUint16(start, es.length, true);
+    let p = start + 2, data = start + 2 + es.length * 12 + 4;
+    for (const [tag, v] of es) {
+      dv.setUint16(p, tag, true); dv.setUint16(p + 2, v.type, true); dv.setUint32(p + 4, v.count, true);
+      if (v.bytes.length <= 4) out.set(v.bytes, p + 8);
+      else { dv.setUint32(p + 8, data, true); out.set(v.bytes, data); data += v.bytes.length + (v.bytes.length & 1); }
+      p += 12;
+    }
+    dv.setUint32(p, 0, true);
+  }
+  function build(r) {
+    const d = new Date(r.ts), q = n => String(n).padStart(2, '0');
+    const local = `${d.getFullYear()}:${q(d.getMonth() + 1)}:${q(d.getDate())} ${q(d.getHours())}:${q(d.getMinutes())}:${q(d.getSeconds())}`;
+    const o = -d.getTimezoneOffset(), off = `${o >= 0 ? '+' : '-'}${q(Math.floor(Math.abs(o) / 60))}:${q(Math.abs(o) % 60)}`;
+    const ifd0 = [[0x010E, asc(r.desc || '')], [0x0112, sh(1)], [0x0131, asc('Cronoscatto')], [0x0132, asc(local)], [0x8769, lg(0)]];
+    const exif = [[0x9000, und('0232')], [0x9003, asc(local)], [0x9004, asc(local)], [0x9010, asc(off)], [0x9011, asc(off)],
+      [0x9291, asc(String(d.getMilliseconds()).padStart(3, '0'))], [0xA002, lg(r.w || 0)], [0xA003, lg(r.h || 0)]];
+    let gps = null;
+    if (r.lat != null && r.lon != null && isFinite(r.lat) && isFinite(r.lon)) {
+      gps = [[0x0000, byt([2, 3, 0, 0])], [0x0001, asc(r.lat >= 0 ? 'N' : 'S')], [0x0002, rat(dms(r.lat))],
+        [0x0003, asc(r.lon >= 0 ? 'E' : 'W')], [0x0004, rat(dms(r.lon))],
+        [0x0007, rat([[d.getUTCHours(), 1], [d.getUTCMinutes(), 1], [d.getUTCSeconds() * 1000 + d.getUTCMilliseconds(), 1000]])],
+        [0x001D, asc(`${d.getUTCFullYear()}:${q(d.getUTCMonth() + 1)}:${q(d.getUTCDate())}`)]];
+      if (r.ms != null && isFinite(r.ms)) gps.push([0x000C, asc('N')], [0x000D, rat([[r.ms * 194.38445, 100]])]);
+      if (r.cog != null && isFinite(r.cog)) gps.push([0x000E, asc('T')], [0x000F, rat([[Math.round(r.cog * 100) % 36000, 100]])]);
+      if (r.acc != null && isFinite(r.acc)) gps.push([0x001F, rat([[r.acc * 10, 10]])]);
+      ifd0.push([0x8825, lg(0)]);
+    }
+    const o0 = 8, o1 = o0 + size(ifd0), o2 = o1 + size(exif);
+    ifd0.find(e => e[0] === 0x8769)[1] = lg(o1);
+    if (gps) ifd0.find(e => e[0] === 0x8825)[1] = lg(o2);
+    const tiff = new Uint8Array(o2 + (gps ? size(gps) : 0));
+    tiff.set([0x49, 0x49, 0x2A, 0, 8, 0, 0, 0], 0);
+    write(tiff, o0, ifd0); write(tiff, o1, exif); if (gps) write(tiff, o2, gps);
+    return tiff;
+  }
+  // Restituisce i byte del JPEG con il blocco EXIF al posto di JFIF/EXIF esistenti
+  async function insert(blob, r) {
+    const src = new Uint8Array(await blob.arrayBuffer());
+    if (src[0] !== 0xFF || src[1] !== 0xD8) return src;
+    let p = 2;
+    while (p + 4 < src.length && src[p] === 0xFF && (src[p + 1] === 0xE0 || src[p + 1] === 0xE1)) p += 2 + ((src[p + 2] << 8) | src[p + 3]);
+    const tiff = build(r), len = 8 + tiff.length;
+    const out = new Uint8Array(12 + tiff.length + src.length - p);
+    out.set([0xFF, 0xD8, 0xFF, 0xE1, len >> 8, len & 255, 0x45, 0x78, 0x69, 0x66, 0, 0], 0);
+    out.set(tiff, 12);
+    out.set(src.subarray(p), 12 + tiff.length);
+    return out;
+  }
+  return { insert };
+})();
+function exifDesc(r) {
+  let s = `${hms(new Date(r.ts))} ${dmy(new Date(r.ts))} #${p4(r.n)}`;
+  if (r.ms != null) s += ` SOG ${(r.ms * 1.9438445).toFixed(1)} kn`;
+  if (r.cog != null) s += ` COG ${String(Math.round(r.cog) % 360).padStart(3, '0')}`;
+  return s;
 }
 
 /* ---------- Scatto ---------- */
@@ -518,12 +598,15 @@ async function capture() {
     session: S.session, n: S.n + 1, ts: t, w, h,
     lat: c ? c.latitude : null, lon: c ? c.longitude : null, acc: c ? c.accuracy : null,
     ms: info.ms, src: info.state, cog: info.ms != null ? S.cog : null,
-    age: S.pos ? (t - S.posAt) / 1000 : null
+    age: S.pos ? (t - S.posAt) / 1000 : null,
+    unit: S.settings.unit, extra: !!S.settings.extra
   };
-  drawStamp(ctx, w, h, rec, info);
-  const blob = await new Promise((res, rej) => canvas.toBlob(b => (b ? res(b) : rej(new Error('Codifica JPEG non riuscita'))), 'image/jpeg', 0.9));
+  rec.band = drawStamp(ctx, w, h, rec, info);
+  const raw = await new Promise((res, rej) => canvas.toBlob(b => (b ? res(b) : rej(new Error('Codifica JPEG non riuscita'))), 'image/jpeg', 0.9));
+  const bytes = await EXIF.insert(raw, { ...rec, desc: exifDesc(rec) });
+  const blob = new Blob([bytes], { type: 'image/jpeg' });
   rec.blob = blob; rec.size = blob.size;
-  rec.crc = crc32(new Uint8Array(await blob.arrayBuffer()));
+  rec.crc = crc32(bytes);
   await putFrame(rec);
   S.n = rec.n; S.recBytes += blob.size;
   sessionAdd(rec);
@@ -572,13 +655,15 @@ function openDB() {
   if (dbPromise) return dbPromise;
   dbPromise = new Promise((res, rej) => {
     if (!('indexedDB' in window)) return rej(new Error('Archivio del browser non disponibile'));
-    const r = indexedDB.open('cronoscatto', 1);
+    const r = indexedDB.open('cronoscatto', 2);
     r.onupgradeneeded = () => {
-      const st = r.result.createObjectStore('frames', { keyPath: 'id', autoIncrement: true });
-      st.createIndex('session', 'session');
+      const db = r.result;
+      if (!db.objectStoreNames.contains('frames')) db.createObjectStore('frames', { keyPath: 'id', autoIncrement: true }).createIndex('session', 'session');
+      if (!db.objectStoreNames.contains('cyclops')) db.createObjectStore('cyclops', { keyPath: 'session' });
     };
-    r.onsuccess = () => res(r.result);
+    r.onsuccess = () => { const db = r.result; db.onversionchange = () => { db.close(); dbPromise = null; }; res(db); };
     r.onerror = () => rej(r.error);
+    r.onblocked = () => toast('Chiudi le altre schede di Cronoscatto aperte e ricarica la pagina.', 9000);
   });
   return dbPromise;
 }
@@ -593,9 +678,13 @@ async function sessionRecords(id) {
   return req.result.sort((a, b) => a.n - b.n);
 }
 async function deleteSession(id) {
-  const db = await openDB(); const { s, done } = tx(db, 'readwrite');
+  const db = await openDB();
+  const t = db.transaction(['frames', 'cyclops'], 'readwrite');
+  const done = new Promise((res, rej) => { t.oncomplete = () => res(); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error || new Error('Transazione annullata')); });
+  const s = t.objectStore('frames');
   const req = s.index('session').openKeyCursor(IDBKeyRange.only(id));
   req.onsuccess = () => { const c = req.result; if (c) { s.delete(c.primaryKey); c.continue(); } };
+  t.objectStore('cyclops').delete(id);
   await done;
 }
 async function loadSessions() {
@@ -716,6 +805,11 @@ function sessionCard(x, zipShare, imgShare) {
   const extra = el('div', 'actions'); extra.hidden = true;
   card.append(actions, extra);
 
+  if (!live) {
+    const a = el('a', 'btn map', 'Mappa e carico Cyclops');
+    a.href = `analisi.html?s=${x.id}`;
+    actions.append(a);
+  }
   const ready = S.prepared.get(x.id);
   if (ready) {
     actions.append(btn(`Scarica ZIP · ${fmtBytes(ready.zip.size)}`, 'primary', () => saveBlob(ready.zip, ready.name)));
